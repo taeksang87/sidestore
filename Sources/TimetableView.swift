@@ -9,6 +9,10 @@ struct TimetableView: View {
     @State private var editing: Route?
     @State private var openingMap = false
     @State private var showNaverMissing = false
+    @AppStorage(RailAPI.keyStorage) private var apiKey = ""
+    @State private var syncing = false
+    @State private var syncMessages: [String] = []
+    @State private var syncFailed = false
 
     init(routeID: UUID, initialDay: DayType) {
         self.routeID = routeID
@@ -48,6 +52,10 @@ struct TimetableView: View {
         let grouped = Dictionary(grouping: times) { $0 / 60 }
 
         return List {
+            if route.autoSync || !apiKey.isEmpty {
+                syncSection(route)
+            }
+
             if !route.busRoutes.isEmpty {
                 busSection(route)
             }
@@ -125,6 +133,60 @@ struct TimetableView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func syncSection(_ route: Route) -> some View {
+        Section {
+            Button {
+                runSync(route)
+            } label: {
+                HStack {
+                    Label("철도 API로 지금 업데이트", systemImage: "arrow.triangle.2.circlepath")
+                    Spacer()
+                    if syncing { ProgressView() }
+                }
+            }
+            .disabled(syncing || apiKey.isEmpty)
+
+            if apiKey.isEmpty {
+                Text("홈 화면 오른쪽 위 ⚙︎ 설정에서 공공데이터포털 인증키를 입력하세요.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            ForEach(syncMessages, id: \.self) { message in
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(syncFailed ? .red : .secondary)
+            }
+        } header: {
+            Text("철도 API 연동")
+        } footer: {
+            VStack(alignment: .leading, spacing: 2) {
+                if let synced = route.timetableSyncedAt {
+                    Text("시간표 업데이트: \(synced.formatted(date: .abbreviated, time: .shortened))")
+                }
+                if !route.expressSyncedDay.isEmpty {
+                    Text(route.expressSyncedDay == RailSync.todayKey() ? "직통열차: 오늘 운행 정보" : "직통열차: \(route.expressSyncedDay) 기준")
+                }
+            }
+        }
+    }
+
+    private func runSync(_ route: Route) {
+        syncing = true
+        syncMessages = []
+        Task {
+            do {
+                let result = try await RailSync.sync(route, key: apiKey, timetable: true, express: true)
+                store.upsert(result.route)
+                syncMessages = result.messages
+                syncFailed = false
+            } catch {
+                syncMessages = [error.localizedDescription]
+                syncFailed = true
+            }
+            syncing = false
         }
     }
 

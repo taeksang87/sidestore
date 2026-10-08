@@ -175,6 +175,22 @@ struct Route: Identifiable, Codable, Equatable {
     var busOriginAddress: String = ""
     var busRoutes: [String] = []
 
+    /// 철도 API(TAGO)로 시간표를 자동으로 받아올지
+    var autoSync: Bool = false
+    /// 지하철정보 API 방향 코드: U(상행) / D(하행)
+    var syncDirection: String = "U"
+    /// 직통열차가 도착역 대신 서는 환승역 (예: 신해운대)
+    var transferStation: String = ""
+    /// "weekday-1056" → 도착 시각(분). API로 받은 실제 도착 시각
+    var arrivals: [String: Int] = [:]
+    var timetableSyncedAt: Date?
+    /// 직통열차를 마지막으로 받은 날짜 (yyyyMMdd)
+    var expressSyncedDay: String = ""
+
+    func arrival(for departure: Int, day: DayType) -> Int? {
+        arrivals["\(day.rawValue)-\(departure)"]
+    }
+
     func times(for day: DayType) -> [Int] {
         switch day {
         case .weekday: return weekday
@@ -200,6 +216,7 @@ extension Route {
         case expresses, transferMinutes, transferFare
         case latitude, longitude
         case busOrigin, busOriginAddress, busRoutes
+        case autoSync, syncDirection, transferStation, arrivals, timetableSyncedAt, expressSyncedDay
     }
 
     /// 새 버전에서 항목이 추가돼도 예전에 저장한 데이터를 읽을 수 있도록, 없는 값은 기본값으로 채운다.
@@ -224,6 +241,12 @@ extension Route {
         busOrigin = try c.decodeIfPresent(String.self, forKey: .busOrigin) ?? ""
         busOriginAddress = try c.decodeIfPresent(String.self, forKey: .busOriginAddress) ?? ""
         busRoutes = try c.decodeIfPresent([String].self, forKey: .busRoutes) ?? []
+        autoSync = try c.decodeIfPresent(Bool.self, forKey: .autoSync) ?? false
+        syncDirection = try c.decodeIfPresent(String.self, forKey: .syncDirection) ?? "U"
+        transferStation = try c.decodeIfPresent(String.self, forKey: .transferStation) ?? ""
+        arrivals = try c.decodeIfPresent([String: Int].self, forKey: .arrivals) ?? [:]
+        timetableSyncedAt = try c.decodeIfPresent(Date.self, forKey: .timetableSyncedAt)
+        expressSyncedDay = try c.decodeIfPresent(String.self, forKey: .expressSyncedDay) ?? ""
     }
 }
 
@@ -235,6 +258,8 @@ struct Departure {
     /// 지금부터 집(회사)을 나서야 할 때까지 남은 초 — 음수면 이미 늦음
     let leaveIn: Int
     let isTomorrow: Bool
+    /// 이 열차가 속한 시간표 (내일 첫차면 내일 요일)
+    let day: DayType
 }
 
 extension Route {
@@ -245,14 +270,15 @@ extension Route {
         let today = times(for: day)
             .filter { $0 * 60 > nowSeconds }
             .prefix(limit)
-            .map { Departure(minutes: $0, secondsUntil: $0 * 60 - nowSeconds, leaveIn: $0 * 60 - walk - nowSeconds, isTomorrow: false) }
+            .map { Departure(minutes: $0, secondsUntil: $0 * 60 - nowSeconds, leaveIn: $0 * 60 - walk - nowSeconds, isTomorrow: false, day: day) }
         if !today.isEmpty { return Array(today) }
 
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
         let untilMidnight = 86400 - nowSeconds
-        return times(for: .automatic(for: tomorrow))
+        let tomorrowDay = DayType.automatic(for: tomorrow)
+        return times(for: tomorrowDay)
             .prefix(limit)
-            .map { Departure(minutes: $0, secondsUntil: untilMidnight + $0 * 60, leaveIn: untilMidnight + $0 * 60 - walk, isTomorrow: true) }
+            .map { Departure(minutes: $0, secondsUntil: untilMidnight + $0 * 60, leaveIn: untilMidnight + $0 * 60 - walk, isTomorrow: true, day: tomorrowDay) }
     }
 
     /// 지금 출발하면 탈 수 있는 다음 직통열차
@@ -268,6 +294,12 @@ extension Route {
     }
 
     var hasCoordinate: Bool { latitude != nil && longitude != nil }
+
+    /// API로 받은 실제 도착 시각, 없으면 탑승 시간으로 계산한 예상 시각
+    func arrivalEstimate(for departure: Departure) -> (minutes: Int, exact: Bool)? {
+        if let exact = arrival(for: departure.minutes, day: departure.day) { return (exact, true) }
+        return rideMinutes > 0 ? (departure.minutes + rideMinutes, false) : nil
+    }
 
     static var samples: [Route] {
         var donghae = Route(
@@ -335,6 +367,8 @@ extension Route {
         // 신해운대 환승 대기 14분 + 센텀까지 7분
         donghae.transferMinutes = 21
         donghae.transferFare = 1600
+        donghae.transferStation = "신해운대"
+        donghae.autoSync = true
 
         donghae.latitude = 35.5384
         donghae.longitude = 129.3372

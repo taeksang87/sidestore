@@ -58,6 +58,21 @@ struct RouteEditView: View {
                 }
 
                 Section {
+                    Toggle("철도 API 자동 연동", isOn: $draft.autoSync)
+                    if draft.autoSync {
+                        Picker("방향", selection: $draft.syncDirection) {
+                            Text("상행").tag("U")
+                            Text("하행").tag("D")
+                        }
+                        TextField("직통열차 환승역 (선택, 예: 신해운대)", text: $draft.transferStation)
+                    }
+                } header: {
+                    Text("철도 API (공공데이터포털)")
+                } footer: {
+                    Text("켜면 ‘타는 역’·‘내리는 역’ 이름으로 광역전철 시간표와 실제 도착 시각, 오늘의 KTX·ITX를 자동으로 받아와요. 방향이 틀리면 반대 방향으로 한 번 더 시도해요. 아래 시간표는 자동으로 덮어써져요.")
+                }
+
+                Section {
                     Picker("요일", selection: $selectedDay) {
                         ForEach(DayType.allCases) { d in
                             Text(d.shortTitle).tag(d)

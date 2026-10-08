@@ -2,9 +2,12 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: RouteStore
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(DayOverride.storageKey) private var dayOverrideRaw = ""
+    @AppStorage(RailAPI.keyStorage) private var apiKey = ""
     @State private var direction = CommuteDirection.suggested()
     @State private var editing: Route?
+    @State private var showingSettings = false
 
     private var day: DayType { DayOverride.effective(raw: dayOverrideRaw) }
 
@@ -78,6 +81,13 @@ struct ContentView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     dayMenu
                 }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         editing = Route(direction: direction)
@@ -89,6 +99,20 @@ struct ContentView: View {
             .sheet(item: $editing) { route in
                 RouteEditView(route: route)
                     .environmentObject(store)
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
+            }
+            .task {
+                await RailSync.autoSync(store: store, key: apiKey)
+            }
+            .onChange(of: scenePhase) { phase in
+                if phase == .active {
+                    Task { await RailSync.autoSync(store: store, key: apiKey) }
+                }
+            }
+            .onChange(of: apiKey) { _ in
+                Task { await RailSync.autoSync(store: store, key: apiKey) }
             }
         }
     }
@@ -202,8 +226,8 @@ struct RouteCard: View {
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundColor(.teal)
-                    if route.rideMinutes > 0 {
-                        Text("\(route.destination.isEmpty ? "도착" : route.destination + " 도착") 약 \(TimeText.clock(first.minutes + route.rideMinutes))")
+                    if let arrival = route.arrivalEstimate(for: first) {
+                        Text("\(route.destination.isEmpty ? "도착" : route.destination + " 도착") \(arrival.exact ? "" : "약 ")\(TimeText.clock(arrival.minutes))")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
