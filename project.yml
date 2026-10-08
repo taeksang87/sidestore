@@ -14,7 +14,11 @@ targets:
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: 출퇴근
+        CFBundleDisplayName: CommuteTimer
+        CFBundleName: CommuteTimer
+        CFBundleDevelopmentRegion: ko
+        CFBundleLocalizations:
+          - ko
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
         LSRequiresIPhoneOS: true

@@ -48,6 +48,13 @@ jobs:
         run: |
           mkdir Payload
           cp -R build/Build/Products/Release-iphoneos/CommuteTimer.app Payload/
+          # SideStore는 앱 이름으로 Apple App ID를 만들기 때문에 영문·숫자만 허용된다.
+          for key in CFBundleDisplayName CFBundleName; do
+            name=$(/usr/libexec/PlistBuddy -c "Print :$key" Payload/CommuteTimer.app/Info.plist)
+            echo "$key=$name"
+            echo "$name" | grep -qE '^[A-Za-z0-9 ]+$' || { echo "::error::$key '$name' 에 영문·숫자 외 문자가 있음"; exit 1; }
+          done
+          test -f Payload/CommuteTimer.app/ko.lproj/InfoPlist.strings || { echo "::error::ko.lproj/InfoPlist.strings 누락"; exit 1; }
           zip -qry CommuteTimer.ipa Payload
 
       - name: Upload artifact
