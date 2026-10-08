@@ -113,8 +113,7 @@ struct RailAPI {
             let busCities = try await request("BusSttnInfoInqireService/getCtyCodeList", [:])
             result += " · 버스정보 OK (도시 \(busCities.count)곳)"
         } catch {
-            result += "
-버스정보: \(error.localizedDescription)"
+            result += "\n버스정보: \(error.localizedDescription)"
         }
         return result
     }
