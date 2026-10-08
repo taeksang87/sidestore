@@ -142,6 +142,9 @@ struct ContentView: View {
 /// 동해선 위젯과 같은 구성: 다음 열차 · 직통열차 · 자전거 날씨
 struct RouteCard: View {
     @EnvironmentObject private var weather: WeatherStore
+    @EnvironmentObject private var bus: BusStore
+    @EnvironmentObject private var store: RouteStore
+    @AppStorage(RailAPI.keyStorage) private var apiKey = ""
     let route: Route
     let day: DayType
 
@@ -152,6 +155,11 @@ struct RouteCard: View {
         .task(id: route.id) {
             if let lat = route.latitude, let lng = route.longitude {
                 await weather.refreshIfNeeded(latitude: lat, longitude: lng)
+            }
+            // 화면에 보이는 동안 1분마다 버스 도착정보 갱신
+            while !Task.isCancelled {
+                await bus.refresh(route: route, key: apiKey, store: store, minInterval: 55)
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
             }
         }
     }
@@ -200,7 +208,11 @@ struct RouteCard: View {
                             .font(.caption.weight(.semibold))
                     }
                     Spacer()
-                    if !route.busRoutes.isEmpty {
+                    if let next = bus.upcoming(for: route, now: now).first {
+                        Text("🚌 \(next.arrival.routeNo)번 \(busTime(next.remaining))")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundColor(.green)
+                    } else if !route.busRoutes.isEmpty {
                         Text("🚌 눌러서 경유버스 보기")
                             .font(.caption2)
                             .foregroundColor(.secondary)
@@ -209,6 +221,10 @@ struct RouteCard: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func busTime(_ seconds: Int) -> String {
+        seconds < 60 ? "곧 도착" : "\(seconds / 60)분 후"
     }
 
     private var title: String {

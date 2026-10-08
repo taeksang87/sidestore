@@ -39,7 +39,7 @@ struct SettingsView: View {
 
                 Section("인증키 발급 방법") {
                     Text("1. 공공데이터포털(data.go.kr)에 로그인")
-                    Text("2. 아래 두 API를 검색해서 각각 ‘활용신청’ (자동 승인)\n   • 국토교통부_(TAGO)_열차정보\n   • 국토교통부_(TAGO)_지하철정보")
+                    Text("2. 아래 API를 검색해서 각각 ‘활용신청’ (자동 승인)\n   • 국토교통부_(TAGO)_열차정보\n   • 국토교통부_(TAGO)_지하철정보\n   • 국토교통부_(TAGO)_버스도착정보\n   • 국토교통부_(TAGO)_버스정류소정보")
                     Text("3. 마이페이지 → 개인 API 인증키에서 ‘일반 인증키(Decoding)’를 복사해 위에 붙여넣기")
                     Text("발급 직후에는 키가 활성화되기까지 1~2시간 걸릴 수 있어요.")
                         .foregroundColor(.secondary)

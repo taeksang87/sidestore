@@ -34,7 +34,7 @@ struct RailAPI {
 
     // MARK: - 공통 요청
 
-    private func request(_ path: String, _ params: [String: String]) async throws -> [[String: Any]] {
+    func request(_ path: String, _ params: [String: String]) async throws -> [[String: Any]] {
         // 디코딩 키(+, /, = 포함)와 인코딩 키(%2B 등) 둘 다 받아준다.
         let key = serviceKey.contains("%") ? serviceKey : Self.encode(serviceKey)
         var query = "serviceKey=\(key)&_type=json"
@@ -108,7 +108,15 @@ struct RailAPI {
     func testConnection() async throws -> String {
         let cities = try await request("TrainInfo/GetCtyCodeList", [:])
         let subway = try await request("SubwayInfo/GetKwrdFndSubwaySttnList", ["subwayStationName": "센텀", "numOfRows": "10", "pageNo": "1"])
-        return "열차정보 OK (도시 \(cities.count)곳) · 지하철정보 OK (‘센텀’ 검색 \(subway.count)건)"
+        var result = "열차정보 OK (도시 \(cities.count)곳) · 지하철정보 OK (‘센텀’ 검색 \(subway.count)건)"
+        do {
+            let busCities = try await request("BusSttnInfoInqireService/getCtyCodeList", [:])
+            result += " · 버스정보 OK (도시 \(busCities.count)곳)"
+        } catch {
+            result += "
+버스정보: \(error.localizedDescription)"
+        }
+        return result
     }
 
     // MARK: - 지하철정보 (광역전철 시간표)

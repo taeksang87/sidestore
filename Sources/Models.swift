@@ -174,6 +174,9 @@ struct Route: Identifiable, Codable, Equatable {
     var busOrigin: String = ""
     var busOriginAddress: String = ""
     var busRoutes: [String] = []
+    /// 실시간 도착정보를 볼 출발 정류장 (TAGO nodeid). 비어 있으면 자동 선택
+    var busStopId: String = ""
+    var busStopLabel: String = ""
 
     /// 철도 API(TAGO)로 시간표를 자동으로 받아올지
     var autoSync: Bool = false
@@ -217,6 +220,7 @@ extension Route {
         case latitude, longitude
         case busOrigin, busOriginAddress, busRoutes
         case autoSync, syncDirection, transferStation, arrivals, timetableSyncedAt, expressSyncedDay
+        case busStopId, busStopLabel
     }
 
     /// 새 버전에서 항목이 추가돼도 예전에 저장한 데이터를 읽을 수 있도록, 없는 값은 기본값으로 채운다.
@@ -247,6 +251,8 @@ extension Route {
         arrivals = try c.decodeIfPresent([String: Int].self, forKey: .arrivals) ?? [:]
         timetableSyncedAt = try c.decodeIfPresent(Date.self, forKey: .timetableSyncedAt)
         expressSyncedDay = try c.decodeIfPresent(String.self, forKey: .expressSyncedDay) ?? ""
+        busStopId = try c.decodeIfPresent(String.self, forKey: .busStopId) ?? ""
+        busStopLabel = try c.decodeIfPresent(String.self, forKey: .busStopLabel) ?? ""
     }
 }
 

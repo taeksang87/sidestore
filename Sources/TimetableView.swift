@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TimetableView: View {
     @EnvironmentObject private var store: RouteStore
+    @EnvironmentObject private var bus: BusStore
     @Environment(\.openURL) private var openURL
     @AppStorage(DayOverride.storageKey) private var dayOverrideRaw = ""
     let routeID: UUID
@@ -21,8 +22,17 @@ struct TimetableView: View {
 
     var body: some View {
         if let route = store.route(id: routeID) {
-            TimelineView(.periodic(from: .now, by: 15)) { context in
+            TimelineView(.periodic(from: .now, by: 5)) { context in
                 timetable(route: route, now: context.date)
+            }
+            .task(id: routeID) {
+                // 이 화면이 떠 있는 동안 30초마다 버스 도착정보 갱신
+                while !Task.isCancelled {
+                    if let current = store.route(id: routeID) {
+                        await bus.refresh(route: current, key: apiKey, store: store, minInterval: 25)
+                    }
+                    try? await Task.sleep(nanoseconds: 30_000_000_000)
+                }
             }
             .navigationTitle(route.name)
             .navigationBarTitleDisplayMode(.inline)
@@ -57,6 +67,7 @@ struct TimetableView: View {
             }
 
             if !route.busRoutes.isEmpty {
+                liveBusSection(route, now: now)
                 busSection(route)
             }
 
@@ -187,6 +198,84 @@ struct TimetableView: View {
                 syncFailed = true
             }
             syncing = false
+        }
+    }
+
+    private func liveBusSection(_ route: Route, now: Date) -> some View {
+        let state = bus.state(for: route)
+        let upcoming = bus.upcoming(for: route, now: now)
+
+        return Section {
+            if apiKey.isEmpty {
+                Text("홈 화면 ⚙︎ 설정에서 인증키를 넣으면 실시간 도착정보를 볼 수 있어요.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else if let error = state?.error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            } else if state?.fetchedAt == nil {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("불러오는 중…")
+                        .foregroundColor(.secondary)
+                }
+            } else if upcoming.isEmpty {
+                Text("지금 오는 경유버스가 없어요. 차고지에서 아직 출발하지 않은 버스는 도착정보에 나오지 않을 수 있어요.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(0..<min(6, upcoming.count), id: \.self) { index in
+                    let item = upcoming[index]
+                    HStack {
+                        Text(item.arrival.routeNo)
+                            .font(.title3.bold().monospacedDigit())
+                        if item.arrival.vehicleType.contains("저상") {
+                            Text("저상")
+                                .font(.caption2)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color.blue.opacity(0.15), in: Capsule())
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(item.remaining < 60 ? "곧 도착" : "\(item.remaining / 60)분 후")
+                                .font(.body.bold().monospacedDigit())
+                                .foregroundColor(.green)
+                            if item.arrival.stopsAway > 0 {
+                                Text("\(item.arrival.stopsAway)정거장 전")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let state, state.candidates.count > 1 {
+                Picker("정류장", selection: Binding(
+                    get: { state.stop?.id ?? "" },
+                    set: { id in
+                        guard let stop = state.candidates.first(where: { $0.id == id }) else { return }
+                        bus.choose(stop, for: route, store: store)
+                        Task {
+                            if let current = store.route(id: route.id) {
+                                await bus.refresh(route: current, key: apiKey, store: store, minInterval: 0)
+                            }
+                        }
+                    }
+                )) {
+                    ForEach(state.candidates) { stop in
+                        Text(stop.label).tag(stop.id)
+                    }
+                }
+            }
+        } header: {
+            Text("🚌 실시간 도착 · \(state?.stop?.label ?? route.busOrigin)")
+        } footer: {
+            if let fetched = state?.fetchedAt, state?.error == nil {
+                Text("\(fetched.formatted(date: .omitted, time: .standard)) 기준 · 30초마다 갱신")
+            }
         }
     }
 
