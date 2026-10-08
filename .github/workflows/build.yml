@@ -14,8 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen, ldid
+        run: brew install xcodegen ldid
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -48,13 +48,27 @@ jobs:
         run: |
           mkdir Payload
           cp -R build/Build/Products/Release-iphoneos/CommuteTimer.app Payload/
-          # SideStore는 앱 이름으로 Apple App ID를 만들기 때문에 영문·숫자만 허용된다.
-          for key in CFBundleDisplayName CFBundleName; do
-            name=$(/usr/libexec/PlistBuddy -c "Print :$key" Payload/CommuteTimer.app/Info.plist)
-            echo "$key=$name"
-            echo "$name" | grep -qE '^[A-Za-z0-9 ]+$' || { echo "::error::$key '$name' 에 영문·숫자 외 문자가 있음"; exit 1; }
+          APP=Payload/CommuteTimer.app
+          APPEX=$APP/PlugIns/CommuteWidget.appex
+          test -d "$APPEX" || { echo "::error::위젯 확장(CommuteWidget.appex)이 앱에 들어가지 않음"; exit 1; }
+
+          # SideStore는 앱·확장 이름으로 Apple App ID를 만들기 때문에 영문·숫자만 허용된다.
+          for plist in "$APP/Info.plist" "$APPEX/Info.plist"; do
+            for key in CFBundleDisplayName CFBundleName; do
+              name=$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist")
+              echo "$plist $key=$name"
+              echo "$name" | grep -qE '^[A-Za-z0-9 ]+$' || { echo "::error::$key '$name' 에 영문·숫자 외 문자가 있음"; exit 1; }
+            done
           done
-          test -f Payload/CommuteTimer.app/ko.lproj/InfoPlist.strings || { echo "::error::ko.lproj/InfoPlist.strings 누락"; exit 1; }
+          test -f "$APP/ko.lproj/InfoPlist.strings" || { echo "::error::ko.lproj/InfoPlist.strings 누락"; exit 1; }
+
+          # 서명 없는 빌드에는 entitlements가 없어서 SideStore가 App Group을 등록하지 못한다.
+          # ldid로 App Group entitlements만 넣어 두면 SideStore가 읽어서 내 Apple ID로 등록·서명한다. (확장 먼저, 앱 나중)
+          ldid -SSigning/Widget.entitlements "$APPEX/CommuteWidget"
+          ldid -SSigning/App.entitlements "$APP/CommuteTimer"
+          ldid -e "$APPEX/CommuteWidget" | grep -q group.app.commutetimer || { echo "::error::위젯 entitlements 누락"; exit 1; }
+          ldid -e "$APP/CommuteTimer" | grep -q group.app.commutetimer || { echo "::error::앱 entitlements 누락"; exit 1; }
+
           zip -qry CommuteTimer.ipa Payload
 
       - name: Upload artifact
@@ -68,5 +82,5 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: 출퇴근 시간표 (빌드 ${{ github.run_number }})
-          body: 아이폰 Safari에서 아래 CommuteTimer.ipa를 받아 SideStore로 설치하세요.
+          body: 아이폰 Safari에서 아래 CommuteTimer.ipa를 받아 SideStore로 설치하세요. 앱 확장(위젯)을 유지할지 물으면 유지를 선택하세요.
           files: CommuteTimer.ipa

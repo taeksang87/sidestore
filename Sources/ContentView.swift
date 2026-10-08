@@ -1,7 +1,9 @@
 import SwiftUI
+import WidgetKit
 
 struct ContentView: View {
     @EnvironmentObject private var store: RouteStore
+    @EnvironmentObject private var bus: BusStore
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(DayOverride.storageKey) private var dayOverrideRaw = ""
     @AppStorage(RailAPI.keyStorage) private var apiKey = ""
@@ -104,17 +106,45 @@ struct ContentView: View {
                 SettingsView()
             }
             .task {
+                SharedData.dayOverrideRaw = dayOverrideRaw
                 await RailSync.autoSync(store: store, key: apiKey)
+                await refreshAlerts()
+                // 앱이 열려 있는 동안 1분마다 잠금화면 실시간 현황 갱신
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                    await updateLiveActivities()
+                }
             }
             .onChange(of: scenePhase) { phase in
                 if phase == .active {
-                    Task { await RailSync.autoSync(store: store, key: apiKey) }
+                    Task {
+                        await RailSync.autoSync(store: store, key: apiKey)
+                        await refreshAlerts()
+                    }
                 }
+            }
+            .onChange(of: store.routes) { _ in
+                Task { await refreshAlerts() }
+            }
+            .onChange(of: dayOverrideRaw) { raw in
+                SharedData.dayOverrideRaw = raw
+                WidgetCenter.shared.reloadAllTimelines()
+                Task { await refreshAlerts() }
             }
             .onChange(of: apiKey) { _ in
                 Task { await RailSync.autoSync(store: store, key: apiKey) }
             }
         }
+    }
+
+    /// 출발 알림 재예약 + 잠금화면 실시간 현황 갱신
+    private func refreshAlerts() async {
+        await NotificationScheduler.reschedule(routes: store.routes, dayOverrideRaw: dayOverrideRaw)
+        await updateLiveActivities()
+    }
+
+    private func updateLiveActivities() async {
+        await LiveActivityManager.updateAll(routes: store.routes, day: day) { bus.summary(for: $0) }
     }
 
     private var dayMenu: some View {

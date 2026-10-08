@@ -178,6 +178,13 @@ struct Route: Identifiable, Codable, Equatable {
     var busStopId: String = ""
     var busStopLabel: String = ""
 
+    /// 출발 알림: 나가야 할 시각 notifyLead분 전에 알림 (notifyFrom~notifyTo 사이 열차만)
+    var notifyEnabled: Bool = false
+    var notifyLead: Int = 5
+    var notifyFrom: Int = 17 * 60
+    var notifyTo: Int = 20 * 60
+    var notifyDays: [DayType] = [.weekday]
+
     /// 철도 API(TAGO)로 시간표를 자동으로 받아올지
     var autoSync: Bool = false
     /// 지하철정보 API 방향 코드: U(상행) / D(하행)
@@ -221,6 +228,7 @@ extension Route {
         case busOrigin, busOriginAddress, busRoutes
         case autoSync, syncDirection, transferStation, arrivals, timetableSyncedAt, expressSyncedDay
         case busStopId, busStopLabel
+        case notifyEnabled, notifyLead, notifyFrom, notifyTo, notifyDays
     }
 
     /// 새 버전에서 항목이 추가돼도 예전에 저장한 데이터를 읽을 수 있도록, 없는 값은 기본값으로 채운다.
@@ -253,6 +261,11 @@ extension Route {
         expressSyncedDay = try c.decodeIfPresent(String.self, forKey: .expressSyncedDay) ?? ""
         busStopId = try c.decodeIfPresent(String.self, forKey: .busStopId) ?? ""
         busStopLabel = try c.decodeIfPresent(String.self, forKey: .busStopLabel) ?? ""
+        notifyEnabled = try c.decodeIfPresent(Bool.self, forKey: .notifyEnabled) ?? false
+        notifyLead = try c.decodeIfPresent(Int.self, forKey: .notifyLead) ?? 5
+        notifyFrom = try c.decodeIfPresent(Int.self, forKey: .notifyFrom) ?? 17 * 60
+        notifyTo = try c.decodeIfPresent(Int.self, forKey: .notifyTo) ?? 20 * 60
+        notifyDays = try c.decodeIfPresent([DayType].self, forKey: .notifyDays) ?? [.weekday]
     }
 }
 

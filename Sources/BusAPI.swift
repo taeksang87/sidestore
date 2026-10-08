@@ -107,6 +107,13 @@ final class BusStore: ObservableObject {
             .filter { $0.remaining > -60 }
     }
 
+    /// "🚌 717번 3분 후" (잠금화면·카드용 한 줄 요약)
+    func summary(for route: Route, now: Date = Date()) -> String? {
+        guard let next = upcoming(for: route, now: now).first else { return nil }
+        let time = next.remaining < 60 ? "곧 도착" : "\(next.remaining / 60)분 후"
+        return "🚌 \(next.arrival.routeNo)번 \(time)"
+    }
+
     func refresh(route: Route, key: String, store: RouteStore, minInterval: TimeInterval = 45) async {
         guard !route.busRoutes.isEmpty, !route.busOrigin.isEmpty,
               let api = try? RailAPI(serviceKey: key) else { return }

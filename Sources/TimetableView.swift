@@ -14,6 +14,10 @@ struct TimetableView: View {
     @State private var syncing = false
     @State private var syncMessages: [String] = []
     @State private var syncFailed = false
+    @State private var liveRunning = false
+    @State private var liveError: String?
+    @State private var notifyDenied = false
+    @State private var pendingCount = 0
 
     init(routeID: UUID, initialDay: DayType) {
         self.routeID = routeID
@@ -29,6 +33,8 @@ struct TimetableView: View {
                 // 이 화면이 떠 있는 동안 30초마다 버스 도착정보 갱신
                 while !Task.isCancelled {
                     if let current = store.route(id: routeID) {
+                        liveRunning = LiveActivityManager.isRunning(for: current)
+                        pendingCount = await NotificationScheduler.pendingCount(for: current)
                         await bus.refresh(route: current, key: apiKey, store: store, minInterval: 25)
                     }
                     try? await Task.sleep(nanoseconds: 30_000_000_000)
@@ -65,6 +71,8 @@ struct TimetableView: View {
             if route.autoSync || !apiKey.isEmpty {
                 syncSection(route)
             }
+
+            alertsSection(route)
 
             if !route.busRoutes.isEmpty {
                 liveBusSection(route, now: now)
@@ -142,6 +150,124 @@ struct TimetableView: View {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    private func alertsSection(_ route: Route) -> some View {
+        let binding = Binding<Route>(
+            get: { store.route(id: route.id) ?? route },
+            set: { store.upsert($0) }
+        )
+        let current = binding.wrappedValue
+
+        return Section {
+            Button {
+                toggleLiveActivity(current)
+            } label: {
+                Label(liveRunning ? "잠금화면 실시간 표시 끄기" : "잠금화면에 실시간 표시",
+                      systemImage: liveRunning ? "lock.slash" : "lock.iphone")
+            }
+            if !LiveActivityManager.isSupported {
+                Text("아이폰 설정 > 출퇴근 > ‘실시간 현황’을 켜 주세요.")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
+            if let liveError {
+                Text(liveError)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+
+            Toggle("출발 알림", isOn: Binding(
+                get: { current.notifyEnabled },
+                set: { on in
+                    if on {
+                        Task {
+                            if await NotificationScheduler.requestAuthorization() {
+                                var updated = binding.wrappedValue
+                                updated.notifyEnabled = true
+                                store.upsert(updated)
+                                notifyDenied = false
+                            } else {
+                                notifyDenied = true
+                            }
+                        }
+                    } else {
+                        binding.wrappedValue.notifyEnabled = false
+                    }
+                }
+            ))
+
+            if current.notifyEnabled {
+                Stepper("나가기 \(current.notifyLead)분 전에 알림", value: binding.notifyLead, in: 0...30)
+                DatePicker("이 시각 열차부터", selection: minutesBinding(binding.notifyFrom), displayedComponents: .hourAndMinute)
+                DatePicker("이 시각 열차까지", selection: minutesBinding(binding.notifyTo), displayedComponents: .hourAndMinute)
+                HStack(spacing: 8) {
+                    ForEach(DayType.allCases) { d in
+                        let on = current.notifyDays.contains(d)
+                        Button {
+                            var updated = binding.wrappedValue
+                            if on {
+                                updated.notifyDays.removeAll { $0 == d }
+                            } else {
+                                updated.notifyDays.append(d)
+                            }
+                            store.upsert(updated)
+                        } label: {
+                            Text(d.shortTitle)
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 5)
+                                .background(on ? Color.accentColor : Color.secondary.opacity(0.15), in: Capsule())
+                                .foregroundColor(on ? .white : .primary)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    Spacer()
+                    Text("예약 \(pendingCount)개")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            if notifyDenied {
+                Text("알림 권한이 꺼져 있어요. 아이폰 설정 > 출퇴근 > 알림에서 허용해 주세요.")
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+        } header: {
+            Text("알림·잠금화면")
+        } footer: {
+            Text("잠금화면 표시는 앱을 열 때마다 최신으로 바뀌고, 앱이 꺼져 있어도 다음 열차 4편의 카운트다운은 계속 흘러가요. 출발 알림은 앱을 열 때마다 앞으로 7일 치를 다시 예약해요.")
+        }
+    }
+
+    private func minutesBinding(_ minutes: Binding<Int>) -> Binding<Date> {
+        Binding(
+            get: {
+                Calendar.current.date(byAdding: .minute, value: minutes.wrappedValue, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+            },
+            set: { minutes.wrappedValue = TimeText.minutesOfDay($0) }
+        )
+    }
+
+    private func toggleLiveActivity(_ route: Route) {
+        Task {
+            if LiveActivityManager.isRunning(for: route) {
+                await LiveActivityManager.stop(route: route)
+                liveRunning = false
+            } else {
+                do {
+                    try await LiveActivityManager.start(
+                        route: route,
+                        day: DayOverride.effective(raw: dayOverrideRaw),
+                        busText: bus.summary(for: route)
+                    )
+                    liveRunning = true
+                    liveError = nil
+                } catch {
+                    liveError = "잠금화면 표시를 시작하지 못했어요: \(error.localizedDescription)"
                 }
             }
         }

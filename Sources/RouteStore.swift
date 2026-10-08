@@ -1,21 +1,22 @@
 import Foundation
+import WidgetKit
 
 final class RouteStore: ObservableObject {
     @Published var routes: [Route] = [] {
         didSet { save() }
     }
 
-    private let fileURL: URL
-
     init() {
-        fileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("routes.json")
-
-        if let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode([Route].self, from: data) {
+        // 위젯과 공유하는 App Group 저장소를 먼저 보고, 예전 버전이 앱 문서 폴더에 저장한 데이터가 있으면 옮겨 온다.
+        if let shared = SharedData.loadRoutes() {
+            routes = shared.map(Self.migrate)
+        } else if let data = try? Data(contentsOf: SharedData.localRoutesURL),
+                  let decoded = try? JSONDecoder().decode([Route].self, from: data) {
             routes = decoded.map(Self.migrate)
+            save()
         } else {
             routes = Route.samples
+            save()
         }
     }
 
@@ -51,8 +52,8 @@ final class RouteStore: ObservableObject {
 
     private func save() {
         do {
-            let data = try JSONEncoder().encode(routes)
-            try data.write(to: fileURL, options: .atomic)
+            try SharedData.saveRoutes(routes)
+            WidgetCenter.shared.reloadAllTimelines()
         } catch {
             print("저장 실패: \(error)")
         }
