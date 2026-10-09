@@ -92,6 +92,18 @@ struct RouteEditView: View {
                         }
                         TextField("직통열차 환승역 (선택, 예: 신해운대)", text: $draft.transferStation)
                     }
+                    Toggle("늦은 열차 숨기기", isOn: Binding(
+                        get: { draft.visibleUntil != nil },
+                        set: { draft.visibleUntil = $0 ? 7 * 60 : nil }
+                    ))
+                    if draft.visibleUntil != nil {
+                        DatePicker("이 시각 전 열차만", selection: Binding(
+                            get: {
+                                Calendar.current.date(byAdding: .minute, value: draft.visibleUntil ?? 0, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+                            },
+                            set: { draft.visibleUntil = TimeText.minutesOfDay($0) }
+                        ), displayedComponents: .hourAndMinute)
+                    }
                 } header: {
                     Text("철도 API (공공데이터포털)")
                 } footer: {

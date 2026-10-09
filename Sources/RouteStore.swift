@@ -21,6 +21,21 @@ final class RouteStore: ObservableObject {
         applyOneTimeUpdates()
         applyWalkUpdate()
         applyMugunghwaUpdate()
+        applyVisibleUntilUpdate()
+    }
+
+    /// v6: 출근 동해선(센텀)은 07:00 전 열차만 (무궁화호 06:11이 기본)
+    private func applyVisibleUntilUpdate() {
+        let defaults = UserDefaults.standard
+        let key = "oneTimeUpdate.v6"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        var updated = routes
+        for index in updated.indices
+        where updated[index].direction == .toWork && updated[index].stop == "센텀" && updated[index].visibleUntil == nil {
+            updated[index].visibleUntil = 7 * 60
+        }
+        if updated != routes { routes = updated }
     }
 
     /// v5: 출근 동해선(센텀)은 무궁화호 1886 + 태화강역 → 명촌공영차고지 버스 연계

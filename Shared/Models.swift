@@ -200,6 +200,9 @@ struct Route: Identifiable, Codable, Equatable {
     /// 좌석을 예약해 둔 열차 출발 시각(분). nil이면 시각 표시 없이 좌석만
     var seatTrain: Int?
 
+    /// 이 시각(분) 이후 열차는 다음 열차로 보여주지 않음 (예: 출근은 07:00 전 열차만)
+    var visibleUntil: Int?
+
     /// 시간표 출처: "subway"(광역전철, 지하철정보 API) / "korail"(무궁화·ITX·KTX, 열차정보 API)
     var timetableSource: String = "subway"
     /// "weekday-371" → "무궁화호 1886"
@@ -231,6 +234,12 @@ struct Route: Identifiable, Codable, Equatable {
         arrivals["\(day.rawValue)-\(departure)"]
     }
 
+    /// 다음 열차·알림에 쓰는 시간표 (visibleUntil 이후 열차 제외)
+    func visibleTimes(for day: DayType) -> [Int] {
+        guard let visibleUntil else { return times(for: day) }
+        return times(for: day).filter { $0 < visibleUntil }
+    }
+
     func times(for day: DayType) -> [Int] {
         switch day {
         case .weekday: return weekday
@@ -260,7 +269,7 @@ extension Route {
         case busStopId, busStopLabel
         case notifyEnabled, notifyLead, notifyFrom, notifyTo, notifyDays
         case liveAutoStart, liveAutoFrom, liveAutoUntil, liveAutoDays, tapOpensKorail, seats, seatTrain
-        case timetableSource, trainLabels
+        case timetableSource, trainLabels, visibleUntil
         case connectStopName, connectAddress, connectDestination, connectRoutes, connectTransferMinutes, connectStopId, connectStopLabel
     }
 
@@ -308,6 +317,7 @@ extension Route {
         seatTrain = try c.decodeIfPresent(Int.self, forKey: .seatTrain)
         timetableSource = try c.decodeIfPresent(String.self, forKey: .timetableSource) ?? "subway"
         trainLabels = try c.decodeIfPresent([String: String].self, forKey: .trainLabels) ?? [:]
+        visibleUntil = try c.decodeIfPresent(Int.self, forKey: .visibleUntil)
         connectStopName = try c.decodeIfPresent(String.self, forKey: .connectStopName) ?? ""
         connectAddress = try c.decodeIfPresent(String.self, forKey: .connectAddress) ?? ""
         connectDestination = try c.decodeIfPresent(String.self, forKey: .connectDestination) ?? ""
@@ -335,7 +345,7 @@ extension Route {
     func upcoming(from date: Date, day: DayType, limit: Int = 3) -> [Departure] {
         let nowSeconds = TimeText.secondsOfDay(date)
         let walk = walkMinutes * 60
-        let today = times(for: day)
+        let today = visibleTimes(for: day)
             .filter { $0 * 60 > nowSeconds }
             .prefix(limit)
             .map { Departure(minutes: $0, secondsUntil: $0 * 60 - nowSeconds, leaveIn: $0 * 60 - walk - nowSeconds, isTomorrow: false, day: day) }
@@ -344,7 +354,7 @@ extension Route {
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
         let untilMidnight = 86400 - nowSeconds
         let tomorrowDay = DayType.automatic(for: tomorrow)
-        return times(for: tomorrowDay)
+        return visibleTimes(for: tomorrowDay)
             .prefix(limit)
             .map { Departure(minutes: $0, secondsUntil: untilMidnight + $0 * 60, leaveIn: untilMidnight + $0 * 60 - walk, isTomorrow: true, day: tomorrowDay) }
     }
@@ -369,6 +379,11 @@ extension Route {
         trainLabels["\(day.rawValue)-\(departure)"]
     }
 
+    /// 오늘 아직 탈 열차가 남았는지
+    func hasTrainsLeftToday(at date: Date, day: DayType) -> Bool {
+        upcoming(from: date, day: day, limit: 1).contains { !$0.isTomorrow }
+    }
+
     var hasBusConnection: Bool { !connectStopName.isEmpty && !connectRoutes.isEmpty }
 
     /// 명촌차고지 ⇄ 태화강역 경유 버스 (양방향 동일 노선)
@@ -380,6 +395,7 @@ extension Route {
 
     /// v5 출근 설정: 무궁화호 1886 (센텀 06:11 → 태화강) + 태화강역에서 명촌공영차고지 버스 연계
     mutating func applyMugunghwaCommute() {
+        visibleUntil = 7 * 60
         timetableSource = "korail"
         trainLabels["weekday-\(6 * 60 + 11)"] = "무궁화호 1886"
         connectStopName = "태화강역"

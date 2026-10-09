@@ -41,7 +41,7 @@ enum NotificationScheduler {
             let day = offset == 0 ? DayOverride.effective(raw: dayOverrideRaw, on: now) : DayType.automatic(for: dayStart)
 
             // 잠금화면 실시간 현황 시작 알림: 누르면 앱이 열리면서 자동으로 시작된다.
-            for route in liveRoutes where route.liveAutoDays.contains(day) && route.times(for: day).contains(where: { $0 >= route.liveAutoFrom }) {
+            for route in liveRoutes where route.liveAutoDays.contains(day) && route.visibleTimes(for: day).contains(where: { $0 >= route.liveAutoFrom }) {
                 guard let fireDate = calendar.date(byAdding: .minute, value: route.liveAutoFrom, to: dayStart), fireDate > now else { continue }
                 let content = UNMutableNotificationContent()
                 content.title = "🔒 \(route.name) \(route.direction.title) 시간표"
@@ -55,7 +55,7 @@ enum NotificationScheduler {
             }
 
             for route in active where route.notifyDays.contains(day) {
-                for departure in route.times(for: day) where departure >= route.notifyFrom && departure <= route.notifyTo {
+                for departure in route.visibleTimes(for: day) where departure >= route.notifyFrom && departure <= route.notifyTo {
                     let leaveAt = departure - route.walkMinutes
                     let fireMinutes = leaveAt - route.notifyLead
                     guard let fireDate = calendar.date(byAdding: .minute, value: fireMinutes, to: dayStart), fireDate > now else { continue }

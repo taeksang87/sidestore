@@ -46,7 +46,12 @@ struct CommuteProvider: TimelineProvider {
     /// 오전엔 출근, 오후엔 퇴근 노선. 해당 방향이 없으면 첫 노선
     private func pickRoute(_ routes: [Route], at date: Date) -> Route? {
         let direction = CommuteDirection.suggested(for: date)
-        return routes.first { $0.direction == direction } ?? routes.first
+        let day = DayOverride.effective(raw: SharedData.dayOverrideRaw, on: date)
+        let withTrains = routes.filter { $0.hasTrainsLeftToday(at: date, day: day) }
+        return withTrains.first { $0.direction == direction }
+            ?? withTrains.first
+            ?? routes.first { $0.direction == direction }
+            ?? routes.first
     }
 
     private func entry(at date: Date, routes: [Route]) -> CommuteEntry {
