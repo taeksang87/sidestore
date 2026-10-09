@@ -95,7 +95,7 @@ struct RailAPI {
 
     private static func friendlyError(_ raw: String) -> String {
         if raw.contains("SERVICE_KEY_IS_NOT_REGISTERED") || raw.contains("등록되지 않은") {
-            return "인증키가 등록되지 않았어요. 방금 발급했다면 1~2시간 뒤 다시 시도하고, 열차정보·지하철정보 둘 다 활용신청했는지 확인하세요."
+            return "이 API가 아직 등록되지 않았어요. 공공데이터포털에서 활용신청했는지 확인하고, 방금 신청했다면 1~2시간 뒤 다시 시도하세요."
         }
         if raw.contains("LIMITED_NUMBER_OF_SERVICE_REQUESTS") { return "오늘 API 호출 한도를 넘었어요. 내일 다시 시도하세요." }
         if raw.contains("SERVICE_ACCESS_DENIED") { return "이 API 사용 권한이 없어요. 공공데이터포털에서 활용신청을 확인하세요." }
@@ -105,17 +105,28 @@ struct RailAPI {
 
     // MARK: - 연결 확인
 
+    /// 활용신청한 API마다 따로 확인해서 어느 것이 안 되는지 보여준다.
     func testConnection() async throws -> String {
-        let cities = try await request("TrainInfo/GetCtyCodeList", [:])
-        let subway = try await request("SubwayInfo/GetKwrdFndSubwaySttnList", ["subwayStationName": "센텀", "numOfRows": "10", "pageNo": "1"])
-        var result = "열차정보 OK (도시 \(cities.count)곳) · 지하철정보 OK (‘센텀’ 검색 \(subway.count)건)"
-        do {
-            let busCities = try await request("BusSttnInfoInqireService/getCtyCodeList", [:])
-            result += " · 버스정보 OK (도시 \(busCities.count)곳)"
-        } catch {
-            result += "\n버스정보: \(error.localizedDescription)"
+        let checks: [(name: String, path: String, params: [String: String])] = [
+            ("열차정보", "TrainInfo/GetCtyCodeList", [:]),
+            ("지하철정보", "SubwayInfo/GetKwrdFndSubwaySttnList", ["subwayStationName": "센텀", "numOfRows": "10", "pageNo": "1"]),
+            ("버스도착정보", "ArvlInfoInqireService/getCtyCodeList", [:]),
+            ("버스정류소정보", "BusSttnInfoInqireService/getCtyCodeList", [:])
+        ]
+        var lines: [String] = []
+        var failed = false
+        for check in checks {
+            do {
+                let items = try await request(check.path, check.params)
+                lines.append("✅ \(check.name) (\(items.count)건)")
+            } catch {
+                failed = true
+                lines.append("❌ \(check.name): \(error.localizedDescription)")
+            }
         }
-        return result
+        let text = lines.joined(separator: "\n")
+        if failed { throw RailAPIError.server(text) }
+        return text
     }
 
     // MARK: - 지하철정보 (광역전철 시간표)
