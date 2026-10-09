@@ -199,7 +199,7 @@ struct RouteCard: View {
             }
             // 화면에 보이는 동안 1분마다 버스 도착정보 갱신
             while !Task.isCancelled {
-                await bus.refresh(route: route, key: apiKey, store: store, minInterval: 55)
+                await bus.refreshAll(route: route, key: apiKey, store: store, minInterval: 55)
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
             }
         }
@@ -247,6 +247,10 @@ struct RouteCard: View {
                 expressBlock(express)
             }
 
+            if route.hasBus(.connect), let first, !first.isTomorrow {
+                connectionBlock(now: now)
+            }
+
             if forecast != nil || !route.busRoutes.isEmpty {
                 HStack {
                     if let forecast {
@@ -270,6 +274,53 @@ struct RouteCard: View {
         .padding(.vertical, 4)
     }
 
+    /// 열차 도착 후 갈아탈 버스 (예: 태화강역 → 명촌공영차고지)
+    private func connectionBlock(now: Date) -> some View {
+        let trainArrival = route.activityTrains(from: now, day: day, limit: 1).first?.arrival
+        let connections = trainArrival.map { bus.connections(for: route, trainArrival: $0, now: now) } ?? []
+        let state = bus.state(for: route, kind: .connect)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("🚌 \(route.connectStopName) → \(route.connectDestination) · 환승 \(route.connectTransferMinutes)분")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.green)
+            if connections.isEmpty {
+                Text(connectionStatus(state: state, trainArrival: trainArrival))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                HStack(spacing: 6) {
+                    ForEach(0..<min(3, connections.count), id: \.self) { index in
+                        let item = connections[index]
+                        VStack(spacing: 0) {
+                            Text("\(item.arrival.routeNo)번")
+                                .font(.caption.bold())
+                            Text(TimeText.clock(item.busTime))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.green.opacity(index == 0 ? 0.25 : 0.12), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    Spacer()
+                    Text("대기 \(connections[0].wait / 60)분")
+                        .font(.caption.weight(.semibold))
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func connectionStatus(state: BusStore.State?, trainArrival: Date?) -> String {
+        if apiKey.isEmpty { return "⚙︎ 설정에 인증키를 넣으면 실시간 버스를 연결해요." }
+        if let error = state?.error { return error }
+        guard state?.fetchedAt != nil else { return "실시간 버스 확인 중…" }
+        let arrivalText = trainArrival.map { "열차 도착 \(TimeText.clock($0)) 이후" } ?? "열차 도착 이후"
+        return "\(arrivalText) 탈 수 있는 버스가 아직 안 보여요. 보통 도착 20~30분 전부터 나타나요."
+    }
+
     private func busTime(_ seconds: Int) -> String {
         seconds < 60 ? "곧 도착" : "\(seconds / 60)분 후"
     }
@@ -289,6 +340,11 @@ struct RouteCard: View {
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundColor(.teal)
+                    if let label = route.trainLabel(for: first.minutes, day: first.day) {
+                        Text(label)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.orange)
+                    }
                     if let arrival = route.arrivalEstimate(for: first) {
                         Text("\(route.destination.isEmpty ? "도착" : route.destination + " 도착") \(arrival.exact ? "" : "약 ")\(TimeText.clock(arrival.minutes))")
                             .font(.caption)

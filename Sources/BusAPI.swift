@@ -79,6 +79,48 @@ extension RailAPI {
     }
 }
 
+/// 어느 정류장의 버스를 볼지
+enum BusKind {
+    /// 타는 역까지 가는 버스 (예: 명촌차고지 → 태화강역)
+    case origin
+    /// 내린 역에서 갈아탈 버스 (예: 태화강역 → 명촌공영차고지)
+    case connect
+}
+
+extension Route {
+    func busStopName(_ kind: BusKind) -> String {
+        kind == .origin ? busOrigin : connectStopName
+    }
+
+    func busAddress(_ kind: BusKind) -> String {
+        let address = kind == .origin ? busOriginAddress : connectAddress
+        return address.isEmpty ? busStopName(kind) : address
+    }
+
+    func busRouteNumbers(_ kind: BusKind) -> [String] {
+        kind == .origin ? busRoutes : connectRoutes
+    }
+
+    func savedBusStopId(_ kind: BusKind) -> String {
+        kind == .origin ? busStopId : connectStopId
+    }
+
+    mutating func setBusStop(_ stop: BusStop, kind: BusKind) {
+        switch kind {
+        case .origin:
+            busStopId = stop.id
+            busStopLabel = stop.label
+        case .connect:
+            connectStopId = stop.id
+            connectStopLabel = stop.label
+        }
+    }
+
+    func hasBus(_ kind: BusKind) -> Bool {
+        !busStopName(kind).isEmpty && !busRouteNumbers(kind).isEmpty
+    }
+}
+
 /// 노선별 실시간 버스 도착정보. 화면이 떠 있는 동안 주기적으로 새로 받는다.
 @MainActor
 final class BusStore: ObservableObject {
@@ -91,56 +133,93 @@ final class BusStore: ObservableObject {
         var error: String?
     }
 
-    @Published private(set) var states: [UUID: State] = [:]
-    private var loading: Set<UUID> = []
+    /// 버스로 갈아탈 수 있는 경우
+    struct Connection {
+        let arrival: BusArrival
+        /// 버스가 정류장에 오는 시각
+        let busTime: Date
+        /// 열차에서 내려 정류장에 도착한 뒤 기다리는 시간(초)
+        let wait: Int
+    }
 
-    func state(for route: Route) -> State? { states[route.id] }
+    @Published private(set) var states: [String: State] = [:]
+    private var loading: Set<String> = []
 
-    /// 이 노선의 경유버스만, 지금 시각 기준 남은 초로 다시 계산해서 돌려준다.
-    func upcoming(for route: Route, now: Date = Date()) -> [(arrival: BusArrival, remaining: Int)] {
-        guard let state = states[route.id], let fetchedAt = state.fetchedAt else { return [] }
+    private func key(_ route: Route, _ kind: BusKind) -> String {
+        "\(route.id.uuidString)-\(kind == .origin ? "origin" : "connect")"
+    }
+
+    func state(for route: Route, kind: BusKind = .origin) -> State? { states[key(route, kind)] }
+
+    /// 이 노선의 버스만, 지금 시각 기준 남은 초로 다시 계산해서 돌려준다.
+    func upcoming(for route: Route, kind: BusKind = .origin, now: Date = Date()) -> [(arrival: BusArrival, remaining: Int)] {
+        guard let state = states[key(route, kind)], let fetchedAt = state.fetchedAt else { return [] }
         let elapsed = Int(now.timeIntervalSince(fetchedAt))
-        let wanted = Set(route.busRoutes)
+        let wanted = Set(route.busRouteNumbers(kind))
         return state.arrivals
             .filter { wanted.isEmpty || wanted.contains($0.routeNo) }
             .map { (arrival: $0, remaining: $0.seconds - elapsed) }
             .filter { $0.remaining > -60 }
     }
 
-    /// "🚌 717번 3분 후" (잠금화면·카드용 한 줄 요약)
+    /// 열차가 도착하고 환승 이동 시간이 지난 뒤 탈 수 있는 버스
+    func connections(for route: Route, trainArrival: Date, now: Date = Date()) -> [Connection] {
+        let ready = trainArrival.addingTimeInterval(Double(route.connectTransferMinutes * 60))
+        return upcoming(for: route, kind: .connect, now: now).compactMap { item in
+            let busTime = now.addingTimeInterval(Double(item.remaining))
+            let wait = Int(busTime.timeIntervalSince(ready))
+            return wait >= 0 ? Connection(arrival: item.arrival, busTime: busTime, wait: wait) : nil
+        }
+    }
+
+    /// 잠금화면·카드용 한 줄 요약
+    /// - 갈아탈 버스가 있는 노선: "🚌 태화강역 717번 07:02 (대기 4분)"
+    /// - 그 외: "🚌 717번 3분 후"
     func summary(for route: Route, now: Date = Date()) -> String? {
+        if route.hasBus(.connect) {
+            let day = DayOverride.effective(raw: SharedData.dayOverrideRaw, on: now)
+            guard let arrival = route.activityTrains(from: now, day: day, limit: 1).first?.arrival,
+                  let next = connections(for: route, trainArrival: arrival, now: now).first else { return nil }
+            return "🚌 \(route.connectStopName) \(next.arrival.routeNo)번 \(TimeText.clock(next.busTime)) (대기 \(next.wait / 60)분)"
+        }
         guard let next = upcoming(for: route, now: now).first else { return nil }
         let time = next.remaining < 60 ? "곧 도착" : "\(next.remaining / 60)분 후"
         return "🚌 \(next.arrival.routeNo)번 \(time)"
     }
 
-    func refresh(route: Route, key: String, store: RouteStore, minInterval: TimeInterval = 45) async {
-        guard !route.busRoutes.isEmpty, !route.busOrigin.isEmpty,
-              let api = try? RailAPI(serviceKey: key) else { return }
-        if let fetched = states[route.id]?.fetchedAt, Date().timeIntervalSince(fetched) < minInterval { return }
-        if loading.contains(route.id) { return }
-        loading.insert(route.id)
-        defer { loading.remove(route.id) }
+    /// 노선에 등록된 버스 정류장(출발·환승)을 모두 갱신
+    func refreshAll(route: Route, key apiKey: String, store: RouteStore, minInterval: TimeInterval) async {
+        for kind in [BusKind.origin, .connect] where route.hasBus(kind) {
+            await refresh(route: route, kind: kind, key: apiKey, store: store, minInterval: minInterval)
+        }
+    }
 
-        var state = states[route.id] ?? State()
+    func refresh(route: Route, kind: BusKind = .origin, key apiKey: String, store: RouteStore, minInterval: TimeInterval = 45) async {
+        guard route.hasBus(kind), let api = try? RailAPI(serviceKey: apiKey) else { return }
+        let stateKey = key(route, kind)
+        if let fetched = states[stateKey]?.fetchedAt, Date().timeIntervalSince(fetched) < minInterval { return }
+        if loading.contains(stateKey) { return }
+        loading.insert(stateKey)
+        defer { loading.remove(stateKey) }
+
+        var state = states[stateKey] ?? State()
         do {
             if state.cityCode.isEmpty {
-                let address = route.busOriginAddress.isEmpty ? route.busOrigin : route.busOriginAddress
-                state.cityCode = try await api.busCityCode(forAddress: address)
+                state.cityCode = try await api.busCityCode(forAddress: route.busAddress(kind))
             }
             if state.candidates.isEmpty {
-                state.candidates = try await api.busStops(cityCode: state.cityCode, named: route.busOrigin)
-                guard !state.candidates.isEmpty else { throw RailAPIError.noStation(route.busOrigin) }
+                state.candidates = try await api.busStops(cityCode: state.cityCode, named: route.busStopName(kind))
+                guard !state.candidates.isEmpty else { throw RailAPIError.noStation(route.busStopName(kind)) }
             }
 
-            if let saved = state.candidates.first(where: { $0.id == route.busStopId }) {
+            if let saved = state.candidates.first(where: { $0.id == route.savedBusStopId(kind) }) {
                 state.stop = saved
                 state.arrivals = try await api.busArrivals(cityCode: state.cityCode, stopId: saved.id)
             } else {
-                // 같은 이름 정류장이 여러 개면(방향별) 경유버스가 가장 많이 오는 곳을 고른다.
-                let wanted = Set(route.busRoutes)
+                // 같은 이름 정류장이 여러 개면(방향별) 등록한 버스가 가장 많이 오는 곳을 고른다.
+                let wanted = Set(route.busRouteNumbers(kind))
                 var best: (stop: BusStop, arrivals: [BusArrival], score: Int)?
-                for stop in state.candidates.prefix(4) {
+                for stop in state.candidates.prefix(6) {
                     let arrivals = try await api.busArrivals(cityCode: state.cityCode, stopId: stop.id)
                     let score = Set(arrivals.map(\.routeNo)).intersection(wanted).count
                     if best == nil || score > best!.score { best = (stop, arrivals, score) }
@@ -149,8 +228,7 @@ final class BusStore: ObservableObject {
                     state.stop = best.stop
                     state.arrivals = best.arrivals
                     if best.score > 0, var updated = store.route(id: route.id) {
-                        updated.busStopId = best.stop.id
-                        updated.busStopLabel = best.stop.label
+                        updated.setBusStop(best.stop, kind: kind)
                         store.upsert(updated)
                     }
                 }
@@ -161,15 +239,14 @@ final class BusStore: ObservableObject {
             state.error = error.localizedDescription
             state.fetchedAt = Date()
         }
-        states[route.id] = state
+        states[stateKey] = state
     }
 
-    func choose(_ stop: BusStop, for route: Route, store: RouteStore) {
+    func choose(_ stop: BusStop, for route: Route, kind: BusKind = .origin, store: RouteStore) {
         if var updated = store.route(id: route.id) {
-            updated.busStopId = stop.id
-            updated.busStopLabel = stop.label
+            updated.setBusStop(stop, kind: kind)
             store.upsert(updated)
         }
-        states[route.id]?.fetchedAt = nil
+        states[key(route, kind)]?.fetchedAt = nil
     }
 }

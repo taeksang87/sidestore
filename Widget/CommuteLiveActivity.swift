@@ -111,8 +111,15 @@ struct LiveActivityLockScreen: View {
             if let first = trains.first {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(TimeText.clock(first.departure))
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(TimeText.clock(first.departure))
+                                .font(.system(size: 34, weight: .bold, design: .rounded))
+                            if let label = first.label {
+                                Text(label)
+                                    .font(.caption.bold())
+                                    .foregroundColor(.orange)
+                            }
+                        }
                         if let arrival = first.arrival {
                             Text("\(attributes.destination) \(first.arrivalIsExact ? "" : "약 ")\(TimeText.clock(arrival)) 도착")
                                 .font(.caption)

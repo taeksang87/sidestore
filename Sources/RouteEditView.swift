@@ -13,6 +13,7 @@ struct RouteEditView: View {
     @State private var longitudeText: String
     @State private var transferFareText: String
     @State private var seatTrainText: String
+    @State private var connectRoutesText: String
 
     @State private var genStart = RouteEditView.today(hour: 6, minute: 0)
     @State private var genEnd = RouteEditView.today(hour: 9, minute: 0)
@@ -30,6 +31,7 @@ struct RouteEditView: View {
         _longitudeText = State(initialValue: route.longitude.map { String($0) } ?? "")
         _transferFareText = State(initialValue: route.transferFare > 0 ? String(route.transferFare) : "")
         _seatTrainText = State(initialValue: route.seatTrain.map { TimeText.clock($0) } ?? "")
+        _connectRoutesText = State(initialValue: route.connectRoutes.joined(separator: " "))
     }
 
     private var isNew: Bool { !store.contains(draft) }
@@ -80,6 +82,10 @@ struct RouteEditView: View {
                 Section {
                     Toggle("철도 API 자동 연동", isOn: $draft.autoSync)
                     if draft.autoSync {
+                        Picker("시간표 종류", selection: $draft.timetableSource) {
+                            Text("광역전철").tag("subway")
+                            Text("코레일 열차").tag("korail")
+                        }
                         Picker("방향", selection: $draft.syncDirection) {
                             Text("상행").tag("U")
                             Text("하행").tag("D")
@@ -89,7 +95,7 @@ struct RouteEditView: View {
                 } header: {
                     Text("철도 API (공공데이터포털)")
                 } footer: {
-                    Text("켜면 ‘타는 역’·‘내리는 역’ 이름으로 광역전철 시간표와 실제 도착 시각, 오늘의 KTX·ITX를 자동으로 받아와요. 방향이 틀리면 반대 방향으로 한 번 더 시도해요. 아래 시간표는 자동으로 덮어써져요.")
+                    Text("켜면 ‘타는 역’·‘내리는 역’ 이름으로 시간표와 실제 도착 시각을 자동으로 받아와요. 아래 시간표는 자동으로 덮어써져요.\n• 광역전철: 동해선 전동열차 (7일마다, 방향 지정) + 오늘의 KTX·ITX\n• 코레일 열차: 무궁화·ITX·KTX (매일, 열차 이름 표시)")
                 }
 
                 Section {
@@ -172,6 +178,7 @@ struct RouteEditView: View {
                     Text("한 줄에 하나씩: 종류 번호 출발 도착 도착역 요금\n예) KTX-이음 711 17:51 18:26 신해운대 8400\n도착역이 ‘내리는 역’과 다르면 환승 시간을 더해 최종 도착 시각을 보여줘요.")
                 }
 
+                Group {
                 Section {
                     TextField("위도 (예: 35.5384)", text: $latitudeText)
                         .keyboardType(.numbersAndPunctuation)
@@ -190,6 +197,20 @@ struct RouteEditView: View {
                         .keyboardType(.numbersAndPunctuation)
                 } header: {
                     Text("역까지 가는 버스")
+                }
+
+                Section {
+                    TextField("정류장 이름 (예: 태화강역)", text: $draft.connectStopName)
+                    TextField("도시·주소 (예: 울산광역시 남구)", text: $draft.connectAddress)
+                    TextField("어디까지 (예: 명촌공영차고지)", text: $draft.connectDestination)
+                    TextField("버스 번호 (띄어쓰기로 구분)", text: $connectRoutesText)
+                        .keyboardType(.numbersAndPunctuation)
+                    Stepper("열차에서 정류장까지 \(draft.connectTransferMinutes)분", value: $draft.connectTransferMinutes, in: 0...30)
+                } header: {
+                    Text("내린 뒤 갈아탈 버스")
+                } footer: {
+                    Text("열차 도착 시각 + 정류장까지 걸리는 시간 이후에 오는 버스를 실시간으로 골라서 보여줘요.")
+                }
                 }
 
                 if !isNew {
@@ -251,6 +272,13 @@ struct RouteEditView: View {
         route.busRoutes = busText
             .components(separatedBy: CharacterSet(charactersIn: " ,\n\""))
             .filter { !$0.isEmpty }
+        route.connectRoutes = connectRoutesText
+            .components(separatedBy: CharacterSet(charactersIn: " ,\n\""))
+            .filter { !$0.isEmpty }
+        if route.connectRoutes != draft.connectRoutes || route.connectStopName != store.route(id: route.id)?.connectStopName {
+            route.connectStopId = ""
+            route.connectStopLabel = ""
+        }
         route.latitude = Double(latitudeText.trimmingCharacters(in: .whitespaces))
         route.longitude = Double(longitudeText.trimmingCharacters(in: .whitespaces))
         store.upsert(route)

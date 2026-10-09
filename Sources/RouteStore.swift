@@ -20,6 +20,22 @@ final class RouteStore: ObservableObject {
         }
         applyOneTimeUpdates()
         applyWalkUpdate()
+        applyMugunghwaUpdate()
+    }
+
+    /// v5: 출근 동해선(센텀)은 무궁화호 1886 + 태화강역 → 명촌공영차고지 버스 연계
+    private func applyMugunghwaUpdate() {
+        let defaults = UserDefaults.standard
+        let key = "oneTimeUpdate.v5"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        var updated = routes
+        for index in updated.indices
+        where updated[index].direction == .toWork && updated[index].stop == "센텀" && !updated[index].isKorailSource {
+            updated[index].applyMugunghwaCommute()
+            updated[index].timetableSyncedAt = nil
+        }
+        if updated != routes { routes = updated }
     }
 
     /// 버전 업데이트 때 한 번만 적용하는 기본값 변경

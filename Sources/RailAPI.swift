@@ -276,13 +276,18 @@ enum RailSync {
 
         if timetable {
             do {
-                messages.append(try await syncTimetable(&route, api: api))
+                if route.isKorailSource {
+                    messages.append(try await syncKorailTimetable(&route, api: api))
+                } else {
+                    messages.append(try await syncTimetable(&route, api: api))
+                }
             } catch {
                 failures.append("시간표: \(error.localizedDescription)")
             }
         }
 
-        if express, !route.destination.isEmpty {
+        // 코레일 시간표 노선은 무궁화·ITX·KTX가 이미 시간표에 들어 있으므로 직통열차를 따로 받지 않는다.
+        if express, !route.destination.isEmpty, !route.isKorailSource {
             do {
                 messages.append(try await syncExpresses(&route, api: api))
             } catch {
@@ -351,6 +356,46 @@ enum RailSync {
         return text
     }
 
+    /// 무궁화·ITX·KTX 시간표 (날짜마다 다르므로 오늘·내일 것을 받아 요일 시간표에 넣는다)
+    private static func syncKorailTimetable(_ route: inout Route, api: RailAPI) async throws -> String {
+        guard !route.destination.isEmpty else { throw RailAPIError.empty("내리는 역") }
+        let depId = try await api.trainStationId(named: route.stop)
+        let arrId = try await api.trainStationId(named: route.destination)
+        let today = Date()
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
+
+        var todayTrains: [ExpressTrain] = []
+        // 내일 먼저, 오늘을 나중에 넣어서 요일 종류가 같으면 오늘 시간표가 남게 한다.
+        for date in [tomorrow, today] {
+            let day = DayType.automatic(for: date)
+            let trains = try await api.trains(from: depId, to: arrId, on: date)
+            guard !trains.isEmpty else { continue }
+            let prefix = "\(day.rawValue)-"
+            route.setTimes(trains.map(\.departure), for: day)
+            route.arrivals = route.arrivals.filter { !$0.key.hasPrefix(prefix) }
+            route.trainLabels = route.trainLabels.filter { !$0.key.hasPrefix(prefix) }
+            for train in trains {
+                route.arrivals[prefix + String(train.departure)] = train.arrival
+                route.trainLabels[prefix + String(train.departure)] = "\(train.type) \(train.number)"
+            }
+            if date == today { todayTrains = trains }
+        }
+        guard !todayTrains.isEmpty else { throw RailAPIError.empty("오늘 \(route.stop)→\(route.destination) 열차") }
+
+        if let first = todayTrains.first {
+            var ride = first.arrival - first.departure
+            if ride < 0 { ride += 1440 }
+            route.rideMinutes = ride
+        }
+        route.timetableSyncedAt = today
+        let seatTrain = route.seatTrain.flatMap { minutes in todayTrains.first { $0.departure == minutes } }
+        var text = "\(route.stop)→\(route.destination) 열차 오늘 \(todayTrains.count)편"
+        if let seatTrain {
+            text += " · \(seatTrain.type) \(seatTrain.number) \(TimeText.clock(seatTrain.departure))→\(TimeText.clock(seatTrain.arrival))"
+        }
+        return text
+    }
+
     private static func syncExpresses(_ route: inout Route, api: RailAPI) async throws -> String {
         let depId = try await api.trainStationId(named: route.stop)
         let destId = try await api.trainStationId(named: route.destination)
@@ -379,8 +424,11 @@ enum RailSync {
     static func autoSync(store: RouteStore, key: String) async {
         guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         for route in store.routes where route.autoSync {
-            let needTimetable = route.timetableSyncedAt.map { Date().timeIntervalSince($0) > 7 * 86400 } ?? true
-            let needExpress = route.expressSyncedDay != todayKey()
+            // 코레일 시간표는 날짜마다 달라서 매일, 광역전철 시간표는 7일마다
+            let needTimetable = route.isKorailSource
+                ? !(route.timetableSyncedAt.map { Calendar.current.isDateInToday($0) } ?? false)
+                : route.timetableSyncedAt.map { Date().timeIntervalSince($0) > 7 * 86400 } ?? true
+            let needExpress = !route.isKorailSource && route.expressSyncedDay != todayKey()
             guard needTimetable || needExpress else { continue }
             if let result = try? await sync(route, key: key, timetable: needTimetable, express: needExpress),
                let current = store.route(id: route.id) {
@@ -390,6 +438,7 @@ enum RailSync {
                 merged.saturday = result.route.saturday
                 merged.holiday = result.route.holiday
                 merged.arrivals = result.route.arrivals
+                merged.trainLabels = result.route.trainLabels
                 merged.rideMinutes = result.route.rideMinutes
                 merged.syncDirection = result.route.syncDirection
                 merged.timetableSyncedAt = result.route.timetableSyncedAt

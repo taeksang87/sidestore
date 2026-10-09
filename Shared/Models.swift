@@ -197,6 +197,21 @@ struct Route: Identifiable, Codable, Equatable {
     /// 좌석을 예약해 둔 열차 출발 시각(분). nil이면 시각 표시 없이 좌석만
     var seatTrain: Int?
 
+    /// 시간표 출처: "subway"(광역전철, 지하철정보 API) / "korail"(무궁화·ITX·KTX, 열차정보 API)
+    var timetableSource: String = "subway"
+    /// "weekday-371" → "무궁화호 1886"
+    var trainLabels: [String: String] = [:]
+
+    /// 내린 역에서 갈아탈 버스 (예: 태화강역 → 명촌공영차고지)
+    var connectStopName: String = ""
+    var connectAddress: String = ""
+    var connectDestination: String = ""
+    var connectRoutes: [String] = []
+    /// 열차에서 내려 버스 정류장까지 걸리는 시간
+    var connectTransferMinutes: Int = 5
+    var connectStopId: String = ""
+    var connectStopLabel: String = ""
+
     /// 철도 API(TAGO)로 시간표를 자동으로 받아올지
     var autoSync: Bool = false
     /// 지하철정보 API 방향 코드: U(상행) / D(하행)
@@ -242,6 +257,8 @@ extension Route {
         case busStopId, busStopLabel
         case notifyEnabled, notifyLead, notifyFrom, notifyTo, notifyDays
         case liveAutoStart, liveAutoFrom, liveAutoDays, tapOpensKorail, seats, seatTrain
+        case timetableSource, trainLabels
+        case connectStopName, connectAddress, connectDestination, connectRoutes, connectTransferMinutes, connectStopId, connectStopLabel
     }
 
     /// 새 버전에서 항목이 추가돼도 예전에 저장한 데이터를 읽을 수 있도록, 없는 값은 기본값으로 채운다.
@@ -285,6 +302,15 @@ extension Route {
         tapOpensKorail = try c.decodeIfPresent(Bool.self, forKey: .tapOpensKorail) ?? false
         seats = try c.decodeIfPresent([String: String].self, forKey: .seats) ?? [:]
         seatTrain = try c.decodeIfPresent(Int.self, forKey: .seatTrain)
+        timetableSource = try c.decodeIfPresent(String.self, forKey: .timetableSource) ?? "subway"
+        trainLabels = try c.decodeIfPresent([String: String].self, forKey: .trainLabels) ?? [:]
+        connectStopName = try c.decodeIfPresent(String.self, forKey: .connectStopName) ?? ""
+        connectAddress = try c.decodeIfPresent(String.self, forKey: .connectAddress) ?? ""
+        connectDestination = try c.decodeIfPresent(String.self, forKey: .connectDestination) ?? ""
+        connectRoutes = try c.decodeIfPresent([String].self, forKey: .connectRoutes) ?? []
+        connectTransferMinutes = try c.decodeIfPresent(Int.self, forKey: .connectTransferMinutes) ?? 5
+        connectStopId = try c.decodeIfPresent(String.self, forKey: .connectStopId) ?? ""
+        connectStopLabel = try c.decodeIfPresent(String.self, forKey: .connectStopLabel) ?? ""
     }
 }
 
@@ -333,6 +359,32 @@ extension Route {
 
     var hasCoordinate: Bool { latitude != nil && longitude != nil }
 
+    var isKorailSource: Bool { timetableSource == "korail" }
+
+    func trainLabel(for departure: Int, day: DayType) -> String? {
+        trainLabels["\(day.rawValue)-\(departure)"]
+    }
+
+    var hasBusConnection: Bool { !connectStopName.isEmpty && !connectRoutes.isEmpty }
+
+    /// 명촌차고지 ⇄ 태화강역 경유 버스 (양방향 동일 노선)
+    static let myeongchonBusRoutes = [
+        "217", "417", "712", "713", "714", "718", "721", "723", "725",
+        "728", "732", "734", "741", "742", "743", "744", "752", "753",
+        "763", "773"
+    ]
+
+    /// v5 출근 설정: 무궁화호 1886 (센텀 06:11 → 태화강) + 태화강역에서 명촌공영차고지 버스 연계
+    mutating func applyMugunghwaCommute() {
+        timetableSource = "korail"
+        trainLabels["weekday-\(6 * 60 + 11)"] = "무궁화호 1886"
+        connectStopName = "태화강역"
+        connectAddress = "울산광역시 남구"
+        connectDestination = "명촌공영차고지"
+        connectRoutes = Route.myeongchonBusRoutes
+        connectTransferMinutes = 5
+    }
+
     static let weekdayNames: [(key: String, title: String)] = [("2", "월"), ("3", "화"), ("4", "수"), ("5", "목"), ("6", "금")]
 
     /// 오늘 좌석 안내 한 줄 ("🎫 06:11 3호차 12A"). 오늘 좌석이 없으면 nil
@@ -361,6 +413,7 @@ extension Route {
         route.longitude = 129.1316
         route.seatTrain = 6 * 60 + 11
         route.tapOpensKorail = true
+        route.applyMugunghwaCommute()
         return route
     }
 
@@ -445,11 +498,7 @@ extension Route {
 
         donghae.busOrigin = "명촌차고지"
         donghae.busOriginAddress = "울산광역시 북구 산업로 768"
-        donghae.busRoutes = [
-            "217", "417", "712", "713", "714", "718", "721", "723", "725",
-            "728", "732", "734", "741", "742", "743", "744", "752", "753",
-            "763", "773"
-        ]
+        donghae.busRoutes = myeongchonBusRoutes
         return [commuteToWorkSample, donghae]
     }
 }

@@ -35,7 +35,7 @@ struct TimetableView: View {
                     if let current = store.route(id: routeID) {
                         liveRunning = LiveActivityManager.isRunning(for: current)
                         pendingCount = await NotificationScheduler.pendingCount(for: current)
-                        await bus.refresh(route: current, key: apiKey, store: store, minInterval: 25)
+                        await bus.refreshAll(route: current, key: apiKey, store: store, minInterval: 25)
                     }
                     try? await Task.sleep(nanoseconds: 30_000_000_000)
                 }
@@ -77,6 +77,10 @@ struct TimetableView: View {
             if !route.busRoutes.isEmpty {
                 liveBusSection(route, now: now)
                 busSection(route)
+            }
+
+            if route.hasBus(.connect) {
+                connectSection(route, now: now)
             }
 
             Section {
@@ -369,6 +373,91 @@ struct TimetableView: View {
                 syncFailed = true
             }
             syncing = false
+        }
+    }
+
+    /// 내린 역에서 갈아탈 버스 실시간 (열차 도착 + 환승 시간 이후 탈 수 있는지 표시)
+    private func connectSection(_ route: Route, now: Date) -> some View {
+        let state = bus.state(for: route, kind: .connect)
+        let items = bus.upcoming(for: route, kind: .connect, now: now)
+        let train = route.activityTrains(from: now, day: DayOverride.effective(raw: dayOverrideRaw, on: now), limit: 1).first
+        let ready = train?.arrival?.addingTimeInterval(Double(route.connectTransferMinutes * 60))
+
+        return Section {
+            if let train, let arrival = train.arrival {
+                LabeledContent("\(train.label ?? "열차") \(TimeText.clock(train.departure))",
+                               value: "\(route.connectStopName) \(TimeText.clock(arrival)) 도착 → 정류장 \(TimeText.clock(ready ?? arrival))")
+                    .font(.caption)
+            }
+            if apiKey.isEmpty {
+                Text("홈 화면 ⚙︎ 설정에서 인증키를 넣으면 실시간 버스를 볼 수 있어요.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else if let error = state?.error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            } else if state?.fetchedAt == nil {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("불러오는 중…")
+                        .foregroundColor(.secondary)
+                }
+            } else if items.isEmpty {
+                Text("지금 \(route.connectStopName)에 오는 버스 정보가 없어요. 열차 도착 20~30분 전부터 나타나요.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(0..<min(8, items.count), id: \.self) { index in
+                    let item = items[index]
+                    let busTime = now.addingTimeInterval(Double(item.remaining))
+                    HStack {
+                        Text(item.arrival.routeNo)
+                            .font(.title3.bold().monospacedDigit())
+                        Text(TimeText.clock(busTime))
+                            .font(.body.monospacedDigit())
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        if let ready {
+                            if busTime >= ready {
+                                Text("탑승 가능 · 대기 \(Int(busTime.timeIntervalSince(ready)) / 60)분")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.green)
+                            } else {
+                                Text("열차 도착 전")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        } else {
+                            Text(item.remaining < 60 ? "곧 도착" : "\(item.remaining / 60)분 후")
+                                .font(.caption.bold())
+                        }
+                    }
+                }
+            }
+
+            if let state, state.candidates.count > 1 {
+                Picker("정류장", selection: Binding(
+                    get: { state.stop?.id ?? "" },
+                    set: { id in
+                        guard let stop = state.candidates.first(where: { $0.id == id }) else { return }
+                        bus.choose(stop, for: route, kind: .connect, store: store)
+                        Task {
+                            if let current = store.route(id: route.id) {
+                                await bus.refresh(route: current, kind: .connect, key: apiKey, store: store, minInterval: 0)
+                            }
+                        }
+                    }
+                )) {
+                    ForEach(state.candidates) { stop in
+                        Text(stop.label).tag(stop.id)
+                    }
+                }
+            }
+        } header: {
+            Text("🚌 \(route.connectStopName) → \(route.connectDestination) 연계 · \(state?.stop?.label ?? route.connectStopName)")
+        } footer: {
+            Text("열차 도착 시각 + 환승 \(route.connectTransferMinutes)분 이후에 오는 버스를 ‘탑승 가능’으로 표시해요. \(route.connectStopName) 정류장은 방향별로 여러 개라서, 명촌 방면 정류장이 맞는지 정류장 번호를 확인하고 아니면 위에서 바꿔 주세요.")
         }
     }
 

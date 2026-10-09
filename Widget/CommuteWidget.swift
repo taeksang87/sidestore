@@ -225,9 +225,17 @@ struct CommuteWidgetView: View {
             if let first {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(TimeText.clock(first.departure))
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundColor(.teal)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(TimeText.clock(first.departure))
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundColor(.teal)
+                            if let label = first.label {
+                                Text(label)
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.orange)
+                                    .lineLimit(1)
+                            }
+                        }
                         if let arrival = arrivalText(first) {
                             Text(arrival)
                                 .font(.caption2)

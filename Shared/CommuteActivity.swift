@@ -9,6 +9,8 @@ struct CommuteActivityAttributes: ActivityAttributes {
         var leaveBy: Date
         var arrival: Date?
         var arrivalIsExact: Bool
+        /// "무궁화호 1886"
+        var label: String?
     }
 
     struct ContentState: Codable, Hashable {
@@ -48,7 +50,13 @@ extension Route {
                 arrival = departure.addingTimeInterval(Double(minutes * 60))
                 exact = estimate.exact
             }
-            return .init(departure: departure, leaveBy: now.addingTimeInterval(Double(d.leaveIn)), arrival: arrival, arrivalIsExact: exact)
+            return .init(
+                departure: departure,
+                leaveBy: now.addingTimeInterval(Double(d.leaveIn)),
+                arrival: arrival,
+                arrivalIsExact: exact,
+                label: trainLabel(for: d.minutes, day: d.day)
+            )
         }
     }
 
