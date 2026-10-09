@@ -24,6 +24,20 @@ final class RouteStore: ObservableObject {
         applyVisibleUntilUpdate()
         applyCommuteLiveUpdate()
         applyVoiceUpdate()
+        applyActiveDaysUpdate()
+    }
+
+    /// v9: 출근 동해선(센텀)은 평일만 (주말·공휴일은 다음 평일 06:11 표시)
+    private func applyActiveDaysUpdate() {
+        let defaults = UserDefaults.standard
+        let key = "oneTimeUpdate.v9"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        var updated = routes
+        for index in updated.indices where updated[index].direction == .toWork && updated[index].stop == "센텀" {
+            updated[index].activeDays = [.weekday]
+        }
+        if updated != routes { routes = updated }
     }
 
     /// v8: 퇴근 동해선 에어팟 음성 안내 (5분마다)

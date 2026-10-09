@@ -205,6 +205,8 @@ struct Route: Identifiable, Codable, Equatable {
 
     /// 이 시각(분) 이후 열차는 다음 열차로 보여주지 않음 (예: 출근은 07:00 전 열차만)
     var visibleUntil: Int?
+    /// 이 노선을 타는 요일 (예: 출근은 평일만). 다른 날은 건너뛰고 다음 타는 날 열차를 보여준다.
+    var activeDays: [DayType] = DayType.allCases
 
     /// 시간표 출처: "subway"(광역전철, 지하철정보 API) / "korail"(무궁화·ITX·KTX, 열차정보 API)
     var timetableSource: String = "subway"
@@ -239,6 +241,7 @@ struct Route: Identifiable, Codable, Equatable {
 
     /// 다음 열차·알림에 쓰는 시간표 (visibleUntil 이후 열차 제외)
     func visibleTimes(for day: DayType) -> [Int] {
+        guard activeDays.contains(day) else { return [] }
         guard let visibleUntil else { return times(for: day) }
         return times(for: day).filter { $0 < visibleUntil }
     }
@@ -273,7 +276,7 @@ extension Route {
         case notifyEnabled, notifyLead, notifyFrom, notifyTo, notifyDays
         case liveAutoStart, liveAutoFrom, liveAutoUntil, liveAutoDays, tapOpensKorail, seats, seatTrain
         case voiceEnabled, voiceInterval
-        case timetableSource, trainLabels, visibleUntil
+        case timetableSource, trainLabels, visibleUntil, activeDays
         case connectStopName, connectAddress, connectDestination, connectRoutes, connectTransferMinutes, connectStopId, connectStopLabel
     }
 
@@ -324,6 +327,7 @@ extension Route {
         timetableSource = try c.decodeIfPresent(String.self, forKey: .timetableSource) ?? "subway"
         trainLabels = try c.decodeIfPresent([String: String].self, forKey: .trainLabels) ?? [:]
         visibleUntil = try c.decodeIfPresent(Int.self, forKey: .visibleUntil)
+        activeDays = try c.decodeIfPresent([DayType].self, forKey: .activeDays) ?? DayType.allCases
         connectStopName = try c.decodeIfPresent(String.self, forKey: .connectStopName) ?? ""
         connectAddress = try c.decodeIfPresent(String.self, forKey: .connectAddress) ?? ""
         connectDestination = try c.decodeIfPresent(String.self, forKey: .connectDestination) ?? ""
@@ -344,6 +348,13 @@ struct Departure {
     let isTomorrow: Bool
     /// 이 열차가 속한 시간표 (내일 첫차면 내일 요일)
     let day: DayType
+    /// 오늘이 아니면 앞에 붙일 말 ("내일", "월")
+    var dayLabel: String = ""
+
+    /// "06:11" / "내일 06:11" / "월 06:11"
+    var text: String {
+        dayLabel.isEmpty ? TimeText.clock(minutes) : "\(dayLabel) \(TimeText.clock(minutes))"
+    }
 }
 
 extension Route {
@@ -357,12 +368,26 @@ extension Route {
             .map { Departure(minutes: $0, secondsUntil: $0 * 60 - nowSeconds, leaveIn: $0 * 60 - walk - nowSeconds, isTomorrow: false, day: day) }
         if !today.isEmpty { return Array(today) }
 
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
+        // 오늘 남은 열차가 없으면 다음 타는 날(최대 일주일 뒤) 첫 열차들
+        let calendar = Calendar.current
         let untilMidnight = 86400 - nowSeconds
-        let tomorrowDay = DayType.automatic(for: tomorrow)
-        return visibleTimes(for: tomorrowDay)
-            .prefix(limit)
-            .map { Departure(minutes: $0, secondsUntil: untilMidnight + $0 * 60, leaveIn: untilMidnight + $0 * 60 - walk, isTomorrow: true, day: tomorrowDay) }
+        for offset in 1...7 {
+            guard let nextDate = calendar.date(byAdding: .day, value: offset, to: date) else { continue }
+            let nextDay = DayType.automatic(for: nextDate)
+            let times = visibleTimes(for: nextDay)
+            guard !times.isEmpty else { continue }
+            let base = untilMidnight + (offset - 1) * 86400
+            let label = offset == 1 ? "내일" : Self.weekdayShortName(nextDate)
+            return times.prefix(limit).map {
+                Departure(minutes: $0, secondsUntil: base + $0 * 60, leaveIn: base + $0 * 60 - walk,
+                          isTomorrow: true, day: nextDay, dayLabel: label)
+            }
+        }
+        return []
+    }
+
+    static func weekdayShortName(_ date: Date) -> String {
+        ["일", "월", "화", "수", "목", "금", "토"][Calendar.current.component(.weekday, from: date) - 1]
     }
 
     /// 지금 출발하면 탈 수 있는 다음 직통열차
@@ -412,6 +437,7 @@ extension Route {
 
     mutating func applyMugunghwaCommute() {
         visibleUntil = 7 * 60
+        activeDays = [.weekday]
         timetableSource = "korail"
         trainLabels["weekday-\(6 * 60 + 11)"] = "무궁화호 1886"
         connectStopName = "태화강역"

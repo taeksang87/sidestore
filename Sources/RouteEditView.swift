@@ -55,6 +55,28 @@ struct RouteEditView: View {
                     }
                     Stepper("역까지 이동 \(draft.walkMinutes)분", value: $draft.walkMinutes, in: 0...90)
                     Stepper("탑승 시간 \(draft.rideMinutes)분", value: $draft.rideMinutes, in: 0...300)
+                    HStack(spacing: 8) {
+                        Text("타는 날")
+                        Spacer()
+                        ForEach(DayType.allCases) { d in
+                            let on = draft.activeDays.contains(d)
+                            Button {
+                                if on {
+                                    draft.activeDays.removeAll { $0 == d }
+                                } else {
+                                    draft.activeDays.append(d)
+                                }
+                            } label: {
+                                Text(d.shortTitle)
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(on ? Color.accentColor : Color.secondary.opacity(0.15), in: Capsule())
+                                    .foregroundColor(on ? .white : .primary)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
                 } header: {
                     Text("노선")
                 } footer: {

@@ -387,7 +387,7 @@ struct RouteCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(first.isTomorrow ? "내일 \(TimeText.clock(first.minutes))" : TimeText.clock(first.minutes))
+                    Text(first.text)
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundColor(.teal)
@@ -412,7 +412,7 @@ struct RouteCard: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     ForEach(later, id: \.minutes) { d in
-                        Text(d.isTomorrow ? "내일 \(TimeText.clock(d.minutes))" : TimeText.clock(d.minutes))
+                        Text(d.text)
                             .font(.subheadline.weight(.semibold).monospacedDigit())
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)

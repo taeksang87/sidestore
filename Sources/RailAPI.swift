@@ -390,6 +390,8 @@ enum RailSync {
         // 내일 먼저, 오늘을 나중에 넣어서 요일 종류가 같으면 오늘 시간표가 남게 한다.
         for date in [tomorrow, today] {
             let day = DayType.automatic(for: date)
+            // 타지 않는 날(예: 출근 주말·공휴일) 시간표는 받지 않는다.
+            guard route.activeDays.contains(day) else { continue }
             let trains = try await api.trains(from: depId, to: arrId, on: date)
             guard !trains.isEmpty else { continue }
             let prefix = "\(day.rawValue)-"
@@ -402,7 +404,13 @@ enum RailSync {
             }
             if date == today { todayTrains = trains }
         }
-        guard !todayTrains.isEmpty else { throw RailAPIError.empty("오늘 \(route.stop)→\(route.destination) 열차") }
+        if todayTrains.isEmpty {
+            guard !route.activeDays.contains(DayType.automatic(for: today)) else {
+                throw RailAPIError.empty("오늘 \(route.stop)→\(route.destination) 열차")
+            }
+            route.timetableSyncedAt = today
+            return "오늘은 타지 않는 날이라 시간표를 받지 않았어요."
+        }
 
         if let first = todayTrains.first {
             var ride = first.arrival - first.departure
