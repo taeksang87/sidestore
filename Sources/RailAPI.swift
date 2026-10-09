@@ -41,7 +41,8 @@ struct RailAPI {
         for (name, value) in params {
             query += "&\(name)=\(Self.encode(value))"
         }
-        guard var components = URLComponents(string: Self.base + path) else { throw RailAPIError.server("잘못된 주소") }
+        let address = path.hasPrefix("https://") ? path : Self.base + path
+        guard var components = URLComponents(string: address) else { throw RailAPIError.server("잘못된 주소") }
         components.percentEncodedQuery = query
         guard let url = components.url else { throw RailAPIError.server("잘못된 주소") }
 
@@ -106,12 +107,33 @@ struct RailAPI {
     // MARK: - 연결 확인
 
     /// 활용신청한 API마다 따로 확인해서 어느 것이 안 되는지 보여준다.
+    static let holidayPath = "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo"
+
+    /// 한국천문연구원 특일정보: 그 해 공휴일 (yyyyMMdd)
+    func holidays(year: Int) async throws -> [String] {
+        var dates: [String] = []
+        for month in 1...12 {
+            let items = try await request(Self.holidayPath, [
+                "solYear": String(year),
+                "solMonth": String(format: "%02d", month),
+                "numOfRows": "50",
+                "pageNo": "1"
+            ])
+            for item in items where Self.string(item["isHoliday"]) != "N" {
+                let date = Self.string(item["locdate"])
+                if date.count == 8 { dates.append(date) }
+            }
+        }
+        return dates
+    }
+
     func testConnection() async throws -> String {
         let checks: [(name: String, path: String, params: [String: String])] = [
             ("열차정보", "TrainInfo/GetCtyCodeList", [:]),
             ("지하철정보", "SubwayInfo/GetKwrdFndSubwaySttnList", ["subwayStationName": "센텀", "numOfRows": "10", "pageNo": "1"]),
             ("버스도착정보", "ArvlInfoInqireService/getCtyCodeList", [:]),
-            ("버스정류소정보", "BusSttnInfoInqireService/getCtyCodeList", [:])
+            ("버스정류소정보", "BusSttnInfoInqireService/getCtyCodeList", [:]),
+            ("특일정보(공휴일)", Self.holidayPath, ["solYear": "2026", "solMonth": "10"])
         ]
         var lines: [String] = []
         var failed = false
@@ -423,6 +445,20 @@ enum RailSync {
     @MainActor
     static func autoSync(store: RouteStore, key: String) async {
         guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        // 공휴일 목록: 20일마다 올해·내년 것을 새로 받는다 (실패하면 앱에 넣어 둔 목록을 쓴다)
+        if KoreanHolidays.needsSync, let api = try? RailAPI(serviceKey: key) {
+            let year = Calendar.current.component(.year, from: Date())
+            var dates: [String] = []
+            var years: [Int] = []
+            for y in [year, year + 1] {
+                if let list = try? await api.holidays(year: y), !list.isEmpty {
+                    dates += list
+                    years.append(y)
+                }
+            }
+            if !years.isEmpty { KoreanHolidays.store(dates, years: years) }
+        }
         for route in store.routes where route.autoSync {
             // 코레일 시간표는 날짜마다 달라서 매일, 광역전철 시간표는 7일마다
             let needTimetable = route.isKorailSource

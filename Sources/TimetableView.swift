@@ -194,6 +194,7 @@ struct TimetableView: View {
             ))
             if current.liveAutoStart {
                 DatePicker("이 시각부터", selection: minutesBinding(binding.liveAutoFrom), displayedComponents: .hourAndMinute)
+                DatePicker("이 시각까지", selection: minutesBinding(binding.liveAutoUntil), displayedComponents: .hourAndMinute)
                 dayChips(binding.liveAutoDays)
             }
             Toggle("잠금화면 누르면 코레일톡 열기", isOn: binding.tapOpensKorail)
@@ -264,7 +265,7 @@ struct TimetableView: View {
         } header: {
             Text("알림·잠금화면")
         } footer: {
-            Text("자동 표시: 정한 시각에 ‘탭하면 시작’ 알림이 오고, 그 시각 이후 앱을 열면 바로 잠금화면에 떠요 (무료 Apple ID는 앱 없이 스스로 시작할 수 없어요). 직접 끈 날은 다시 켜지지 않아요.\n잠금화면 표시는 앱을 열 때마다 최신으로 바뀌고, 앱이 꺼져 있어도 다음 열차 4편의 카운트다운은 계속 흘러가요. 출발 알림은 앱을 열 때마다 앞으로 7일 치를 다시 예약해요.")
+            Text("자동 표시: 정한 요일·시간대에 ‘탭하면 시작’ 알림이 오고, 앱을 열면 바로 잠금화면에 떠요. 공휴일은 ‘휴일’로 봐서 평일만 켜 두면 뜨지 않아요. 시간대가 지나면 자동으로 꺼지고, 직접 끈 날은 다시 켜지지 않아요. 단축어 자동화로 앱을 열지 않고 켜고 끌 수도 있어요 (⚙︎ 설정 참고).\n잠금화면 표시는 앱을 열 때마다 최신으로 바뀌고, 앱이 꺼져 있어도 다음 열차 4편의 카운트다운은 계속 흘러가요. 출발 알림은 앱을 열 때마다 앞으로 7일 치를 다시 예약해요.")
         }
     }
 

@@ -30,6 +30,8 @@ struct CommuteActivityAttributes: ActivityAttributes {
     var walkMinutes: Int
     /// 누르면 코레일톡 열기
     var opensKorail: Bool
+    /// 자동(시간·단축어)으로 띄운 것인지. 자동으로 띄운 것은 시간대가 지나면 자동으로 끈다. (예전 버전은 nil)
+    var autoStarted: Bool?
 
     /// 잠금화면·다이나믹 아일랜드를 눌렀을 때 열 주소 (앱이 받아서 코레일톡으로 넘긴다)
     var tapURL: URL? {

@@ -43,6 +43,7 @@ enum DayType: String, Codable, CaseIterable, Identifiable {
     }
 
     static func automatic(for date: Date) -> DayType {
+        if KoreanHolidays.isHoliday(date) { return .holiday }
         switch Calendar.current.component(.weekday, from: date) {
         case 1: return .holiday
         case 7: return .saturday
@@ -188,6 +189,8 @@ struct Route: Identifiable, Codable, Equatable {
     /// 잠금화면 실시간 현황 자동 시작 (liveAutoFrom 이후 앱을 열거나 알림을 누르면 시작)
     var liveAutoStart: Bool = false
     var liveAutoFrom: Int = 15 * 60
+    /// 이 시각이 지나면 자동으로 띄운 잠금화면 현황을 끈다
+    var liveAutoUntil: Int = 21 * 60
     var liveAutoDays: [DayType] = [.weekday]
     /// 잠금화면 실시간 현황을 누르면 코레일톡 열기
     var tapOpensKorail: Bool = false
@@ -256,7 +259,7 @@ extension Route {
         case autoSync, syncDirection, transferStation, arrivals, timetableSyncedAt, expressSyncedDay
         case busStopId, busStopLabel
         case notifyEnabled, notifyLead, notifyFrom, notifyTo, notifyDays
-        case liveAutoStart, liveAutoFrom, liveAutoDays, tapOpensKorail, seats, seatTrain
+        case liveAutoStart, liveAutoFrom, liveAutoUntil, liveAutoDays, tapOpensKorail, seats, seatTrain
         case timetableSource, trainLabels
         case connectStopName, connectAddress, connectDestination, connectRoutes, connectTransferMinutes, connectStopId, connectStopLabel
     }
@@ -298,6 +301,7 @@ extension Route {
         notifyDays = try c.decodeIfPresent([DayType].self, forKey: .notifyDays) ?? [.weekday]
         liveAutoStart = try c.decodeIfPresent(Bool.self, forKey: .liveAutoStart) ?? false
         liveAutoFrom = try c.decodeIfPresent(Int.self, forKey: .liveAutoFrom) ?? 15 * 60
+        liveAutoUntil = try c.decodeIfPresent(Int.self, forKey: .liveAutoUntil) ?? 21 * 60
         liveAutoDays = try c.decodeIfPresent([DayType].self, forKey: .liveAutoDays) ?? [.weekday]
         tapOpensKorail = try c.decodeIfPresent(Bool.self, forKey: .tapOpensKorail) ?? false
         seats = try c.decodeIfPresent([String: String].self, forKey: .seats) ?? [:]
