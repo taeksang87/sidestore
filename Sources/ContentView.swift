@@ -4,6 +4,7 @@ import WidgetKit
 struct ContentView: View {
     @EnvironmentObject private var store: RouteStore
     @EnvironmentObject private var bus: BusStore
+    @EnvironmentObject private var weather: WeatherStore
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(DayOverride.storageKey) private var dayOverrideRaw = ""
     @AppStorage(RailAPI.keyStorage) private var apiKey = ""
@@ -157,8 +158,22 @@ struct ContentView: View {
     }
 
     private func updateLiveActivities() async {
-        await LiveActivityManager.autoStartIfNeeded(routes: store.routes, day: day) { bus.summary(for: $0) }
-        await LiveActivityManager.updateAll(routes: store.routes, day: day) { bus.summary(for: $0) }
+        await LiveActivityManager.autoStartIfNeeded(routes: store.routes, day: day) { extraText(for: $0) }
+        await LiveActivityManager.updateAll(routes: store.routes, day: day) { extraText(for: $0) }
+    }
+
+    /// 잠금화면 아래 줄: 버스 연계 노선은 도착 시각 날씨로 자전거/버스 안내
+    private func extraText(for route: Route) -> String? {
+        let busText = bus.summary(for: route)
+        guard route.hasBusConnection,
+              let lat = route.latitude, let lng = route.longitude,
+              let arrival = route.connectionTrain(at: Date(), day: day)?.arrival,
+              let forecast = weather.snapshot(latitude: lat, longitude: lng, at: arrival) else { return busText }
+        let bike = forecast.bikeStatus
+        if bike.text == "자전거 가능" {
+            return "🚲 자전거 가능 \(forecast.summary)"
+        }
+        return "\(bike.icon) \(bike.text)" + (busText.map { " → \($0)" } ?? "")
     }
 
     private var dayMenu: some View {
@@ -212,10 +227,14 @@ struct RouteCard: View {
     private func content(now: Date) -> some View {
         let upcoming = route.upcoming(from: now, day: day)
         let first = upcoming.first
-        let leaveDate = now.addingTimeInterval(Double(max(0, first?.leaveIn ?? 0)))
+        let onboard = route.onboardTrain(at: now, day: day)
+        // 버스 연계 노선(자전거·버스 환승)은 도착 시각 날씨, 그 외는 나가는 시각 날씨
+        let weatherDate = route.hasBusConnection
+            ? (route.connectionTrain(at: now, day: day)?.arrival ?? now)
+            : now.addingTimeInterval(Double(max(0, first?.leaveIn ?? 0)))
         let forecast: WeatherSnapshot? = {
             guard let lat = route.latitude, let lng = route.longitude else { return nil }
-            return weather.snapshot(latitude: lat, longitude: lng, at: leaveDate)
+            return weather.snapshot(latitude: lat, longitude: lng, at: weatherDate)
         }()
 
         VStack(alignment: .leading, spacing: 10) {
@@ -239,7 +258,11 @@ struct RouteCard: View {
                     .foregroundColor(.orange)
             }
 
-            if let first {
+            if let onboard {
+                onboardBlock(onboard, now: now)
+            }
+
+            if let first, onboard == nil {
                 mainBlock(first, later: Array(upcoming.dropFirst()))
             } else {
                 Text("\(day.title) 시간표가 비어 있어요")
@@ -250,7 +273,7 @@ struct RouteCard: View {
                 expressBlock(express)
             }
 
-            if route.hasBus(.connect), let first, !first.isTomorrow {
+            if route.hasBus(.connect), route.connectionTrain(at: now, day: day) != nil {
                 connectionBlock(now: now)
             }
 
@@ -277,9 +300,34 @@ struct RouteCard: View {
         .padding(.vertical, 4)
     }
 
+    /// 타고 가는 중인 열차: 도착까지 남은 시간
+    private func onboardBlock(_ train: CommuteActivityAttributes.Train, now: Date) -> some View {
+        let arrival = train.arrival ?? now
+        return HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("🚆 \(train.label ?? "열차") 탑승 중")
+                    .font(.subheadline.bold())
+                    .foregroundColor(.teal)
+                Text("\(route.destination) \(train.arrivalIsExact ? "" : "약 ")\(TimeText.clock(arrival)) 도착")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(TimeText.countdown(Int(arrival.timeIntervalSince(now))))
+                    .font(.title3.bold().monospacedDigit())
+                Text("도착까지")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color.teal.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+    }
+
     /// 열차 도착 후 갈아탈 버스 (예: 태화강역 → 명촌공영차고지)
     private func connectionBlock(now: Date) -> some View {
-        let trainArrival = route.activityTrains(from: now, day: day, limit: 1).first?.arrival
+        let trainArrival = route.connectionTrain(at: now, day: day)?.arrival
         let connections = trainArrival.map { bus.connections(for: route, trainArrival: $0, now: now) } ?? []
         let state = bus.state(for: route, kind: .connect)
 

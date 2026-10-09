@@ -381,7 +381,7 @@ struct TimetableView: View {
     private func connectSection(_ route: Route, now: Date) -> some View {
         let state = bus.state(for: route, kind: .connect)
         let items = bus.upcoming(for: route, kind: .connect, now: now)
-        let train = route.activityTrains(from: now, day: DayOverride.effective(raw: dayOverrideRaw, on: now), limit: 1).first
+        let train = route.connectionTrain(at: now, day: DayOverride.effective(raw: dayOverrideRaw, on: now))
         let ready = train?.arrival?.addingTimeInterval(Double(route.connectTransferMinutes * 60))
 
         return Section {

@@ -35,7 +35,7 @@ enum LiveActivityManager {
             && route.liveAutoDays.contains(day)
             && minutes >= route.liveAutoFrom
             && minutes < route.liveAutoUntil
-            && route.upcoming(from: now, day: day).contains { !$0.isTomorrow }
+            && (route.hasBusConnection || route.hasTrainsLeftToday(at: now, day: day))
     }
 
     /// 단축어 ‘실시간 현황 켜기’ (iOS 17 LiveActivityIntent: 앱을 열지 않아도 시작 가능)
@@ -115,7 +115,7 @@ enum LiveActivityManager {
                 continue
             }
             let state = makeState(route: route, day: day, busText: busText(route))
-            if state.trains.isEmpty {
+            if state.trains.isEmpty && state.onboard == nil {
                 await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .default)
             } else {
                 await activity.update(ActivityContent(state: state, staleDate: state.trains.first?.departure))
@@ -129,6 +129,7 @@ enum LiveActivityManager {
             trains: route.activityTrains(from: now, day: day),
             expressText: route.nextExpressText(from: now),
             busText: busText,
+            onboard: route.onboardTrain(at: now, day: day),
             seatText: route.seatText(on: now),
             updatedAt: now
         )

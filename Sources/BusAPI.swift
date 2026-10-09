@@ -178,7 +178,7 @@ final class BusStore: ObservableObject {
     func summary(for route: Route, now: Date = Date()) -> String? {
         if route.hasBus(.connect) {
             let day = DayOverride.effective(raw: SharedData.dayOverrideRaw, on: now)
-            guard let arrival = route.activityTrains(from: now, day: day, limit: 1).first?.arrival,
+            guard let arrival = route.connectionTrain(at: now, day: day)?.arrival,
                   let next = connections(for: route, trainArrival: arrival, now: now).first else { return nil }
             return "🚌 \(route.connectStopName) \(next.arrival.routeNo)번 \(TimeText.clock(next.busTime)) (대기 \(next.wait / 60)분)"
         }

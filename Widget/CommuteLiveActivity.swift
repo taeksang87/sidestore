@@ -10,6 +10,7 @@ struct CommuteLiveActivity: Widget {
                 .activityBackgroundTint(Color(red: 0.06, green: 0.09, blue: 0.16).opacity(0.85))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
+            let onboard = context.state.onboard
             let next = context.state.trains.first(where: { $0.departure > Date() }) ?? context.state.trains.first
             let walks = context.attributes.walkMinutes > 0
             return DynamicIsland {
@@ -56,7 +57,7 @@ struct CommuteLiveActivity: Widget {
                     .foregroundColor(.teal)
             } compactTrailing: {
                 if let next {
-                    CountdownText(target: next.leaveBy)
+                    CountdownText(target: onboard?.arrival ?? next.leaveBy)
                         .frame(maxWidth: 48)
                         .font(.caption.bold())
                 }
@@ -108,7 +109,27 @@ struct LiveActivityLockScreen: View {
                 .background(Color.yellow.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
             }
 
-            if let first = trains.first {
+            if let onboard = context.state.onboard, let arrival = onboard.arrival {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("🚆 \(onboard.label ?? "열차") 탑승 중")
+                            .font(.headline)
+                        Text("\(attributes.destination) \(onboard.arrivalIsExact ? "" : "약 ")\(TimeText.clock(arrival)) 도착")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.65))
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("도착까지")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.65))
+                        CountdownText(target: arrival)
+                            .font(.title.bold())
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 130, alignment: .trailing)
+                    }
+                }
+            } else if let first = trains.first {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {

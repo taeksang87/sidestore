@@ -22,6 +22,20 @@ final class RouteStore: ObservableObject {
         applyWalkUpdate()
         applyMugunghwaUpdate()
         applyVisibleUntilUpdate()
+        applyCommuteLiveUpdate()
+    }
+
+    /// v7: 출근 동해선(센텀) 잠금화면 실시간 현황 평일 05:40~07:20
+    private func applyCommuteLiveUpdate() {
+        let defaults = UserDefaults.standard
+        let key = "oneTimeUpdate.v7"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        var updated = routes
+        for index in updated.indices where updated[index].direction == .toWork && updated[index].stop == "센텀" {
+            updated[index].applyCommuteLiveSchedule()
+        }
+        if updated != routes { routes = updated }
     }
 
     /// v6: 출근 동해선(센텀)은 07:00 전 열차만 (무궁화호 06:11이 기본)

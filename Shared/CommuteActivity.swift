@@ -18,6 +18,8 @@ struct CommuteActivityAttributes: ActivityAttributes {
         var trains: [Train]
         var expressText: String?
         var busText: String?
+        /// 이미 출발해서 타고 가는 중인 열차 (버스 연계 노선: 도착 시각까지 보여준다)
+        var onboard: Train?
         /// 오늘 좌석 ("🎫 06:11 3호차 12A")
         var seatText: String?
         var updatedAt: Date
@@ -40,6 +42,32 @@ struct CommuteActivityAttributes: ActivityAttributes {
 }
 
 extension Route {
+    /// 버스로 갈아타는 노선에서, 이미 출발했고 아직 도착하지 않은 오늘 열차
+    func onboardTrain(at now: Date, day: DayType) -> CommuteActivityAttributes.Train? {
+        guard hasBusConnection else { return nil }
+        let nowSeconds = TimeText.secondsOfDay(now)
+        guard let departure = visibleTimes(for: day).last(where: { $0 * 60 <= nowSeconds }) else { return nil }
+        let estimate = arrival(for: departure, day: day) ?? (rideMinutes > 0 ? departure + rideMinutes : nil)
+        guard let arrivalMinutes = estimate, arrivalMinutes * 60 > nowSeconds else { return nil }
+        let startOfDay = Calendar.current.startOfDay(for: now)
+        let departureDate = startOfDay.addingTimeInterval(Double(departure * 60))
+        return .init(
+            departure: departureDate,
+            leaveBy: departureDate.addingTimeInterval(Double(-walkMinutes * 60)),
+            arrival: startOfDay.addingTimeInterval(Double(arrivalMinutes * 60)),
+            arrivalIsExact: arrival(for: departure, day: day) != nil,
+            label: trainLabel(for: departure, day: day)
+        )
+    }
+
+    /// 버스 연계를 계산할 열차: 타고 가는 중인 열차, 없으면 오늘 탈 다음 열차
+    func connectionTrain(at now: Date, day: DayType) -> CommuteActivityAttributes.Train? {
+        if let onboard = onboardTrain(at: now, day: day) { return onboard }
+        guard let next = activityTrains(from: now, day: day, limit: 1).first,
+              Calendar.current.isDate(next.departure, inSameDayAs: now) else { return nil }
+        return next
+    }
+
     /// 지금 기준 다음 열차들을 Live Activity·위젯용 Date로 바꾼다.
     func activityTrains(from now: Date, day: DayType, limit: Int = 4) -> [CommuteActivityAttributes.Train] {
         upcoming(from: now, day: day, limit: limit).map { d in

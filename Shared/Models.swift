@@ -394,6 +394,16 @@ extension Route {
     ]
 
     /// v5 출근 설정: 무궁화호 1886 (센텀 06:11 → 태화강) + 태화강역에서 명촌공영차고지 버스 연계
+    /// v7 출근 실시간 현황: 평일 05:40~07:20, 날씨는 자전거로 가는 태화강역 기준
+    mutating func applyCommuteLiveSchedule() {
+        liveAutoStart = true
+        liveAutoFrom = 5 * 60 + 40
+        liveAutoUntil = 7 * 60 + 20
+        liveAutoDays = [.weekday]
+        latitude = 35.5384
+        longitude = 129.3372
+    }
+
     mutating func applyMugunghwaCommute() {
         visibleUntil = 7 * 60
         timetableSource = "korail"
@@ -434,6 +444,7 @@ extension Route {
         route.seatTrain = 6 * 60 + 11
         route.tapOpensKorail = true
         route.applyMugunghwaCommute()
+        route.applyCommuteLiveSchedule()
         return route
     }
 
