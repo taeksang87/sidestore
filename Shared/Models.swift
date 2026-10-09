@@ -351,7 +351,7 @@ extension Route {
             destination: "태화강",
             direction: .toWork,
             transport: .train,
-            walkMinutes: 0,
+            walkMinutes: 5,
             rideMinutes: 58
         )
         route.setTimes([6 * 60 + 11], for: .weekday)

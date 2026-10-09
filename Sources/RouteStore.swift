@@ -19,6 +19,7 @@ final class RouteStore: ObservableObject {
             save()
         }
         applyOneTimeUpdates()
+        applyWalkUpdate()
     }
 
     /// 버전 업데이트 때 한 번만 적용하는 기본값 변경
@@ -36,6 +37,20 @@ final class RouteStore: ObservableObject {
         // 출근 동해선(센텀 → 태화강 06:11) 추가
         if !updated.contains(where: { $0.direction == .toWork }) {
             updated.insert(Route.commuteToWorkSample, at: 0)
+        }
+        if updated != routes { routes = updated }
+    }
+
+    /// v4: 출근 동해선(센텀) 역까지 이동 5분
+    private func applyWalkUpdate() {
+        let defaults = UserDefaults.standard
+        let key = "oneTimeUpdate.v4"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        var updated = routes
+        for index in updated.indices
+        where updated[index].direction == .toWork && updated[index].stop == "센텀" && updated[index].walkMinutes == 0 {
+            updated[index].walkMinutes = 5
         }
         if updated != routes { routes = updated }
     }
