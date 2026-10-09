@@ -12,7 +12,28 @@ enum LiveActivityManager {
         Activity<CommuteActivityAttributes>.activities.contains { $0.attributes.routeID == route.id.uuidString }
     }
 
+    /// 자동 시작: 오늘 요일·시각 조건에 맞는 노선이 있으면 잠금화면 실시간 현황을 띄운다.
+    /// (무료 Apple ID는 푸시로 시작할 수 없어서, 앱을 열거나 알림을 누를 때 실행된다)
+    static func autoStartIfNeeded(routes: [Route], day: DayType, busText: (Route) -> String?) async {
+        guard isSupported else { return }
+        let now = Date()
+        let nowMinutes = TimeText.minutesOfDay(now)
+        let today = RailSync.todayKey(now)
+        let candidates = routes.filter { route in
+            route.liveAutoStart
+                && route.liveAutoDays.contains(day)
+                && nowMinutes >= route.liveAutoFrom
+                && UserDefaults.standard.string(forKey: stoppedKey(route)) != today
+                && route.upcoming(from: now, day: day).contains { !$0.isTomorrow }
+        }
+        // 조건에 맞는 노선이 여러 개면 가장 늦게 시작하는 것(지금 시간대에 맞는 것)
+        guard let route = candidates.max(by: { $0.liveAutoFrom < $1.liveAutoFrom }),
+              !isRunning(for: route) else { return }
+        try? await start(route: route, day: day, busText: busText(route))
+    }
+
     static func start(route: Route, day: DayType, busText: String?) async throws {
+        UserDefaults.standard.removeObject(forKey: stoppedKey(route))
         // 노선 하나만 표시: 기존 것은 모두 종료
         for activity in Activity<CommuteActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)
@@ -22,7 +43,8 @@ enum LiveActivityManager {
             routeName: route.name,
             stop: route.stop,
             destination: route.destination,
-            walkMinutes: route.walkMinutes
+            walkMinutes: route.walkMinutes,
+            opensKorail: route.tapOpensKorail
         )
         let state = makeState(route: route, day: day, busText: busText)
         _ = try Activity.request(
@@ -32,7 +54,11 @@ enum LiveActivityManager {
         )
     }
 
+    /// 사용자가 직접 끈 날에는 자동으로 다시 켜지 않는다.
+    private static func stoppedKey(_ route: Route) -> String { "liveStopped-\(route.id.uuidString)" }
+
     static func stop(route: Route) async {
+        UserDefaults.standard.set(RailSync.todayKey(), forKey: stoppedKey(route))
         for activity in Activity<CommuteActivityAttributes>.activities where activity.attributes.routeID == route.id.uuidString {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
@@ -60,6 +86,7 @@ enum LiveActivityManager {
             trains: route.activityTrains(from: now, day: day),
             expressText: route.nextExpressText(from: now),
             busText: busText,
+            seatText: route.seatText(on: now),
             updatedAt: now
         )
     }

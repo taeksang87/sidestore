@@ -5,6 +5,7 @@ import UserNotifications
 /// iOS는 예약 알림을 64개까지만 보관하므로, 앱을 열 때마다 앞으로 7일 치를 다시 예약한다.
 enum NotificationScheduler {
     private static let prefix = "leave-"
+    private static let livePrefix = "live-"
     private static let maxPending = 60
 
     static func requestAuthorization() async -> Bool {
@@ -23,10 +24,11 @@ enum NotificationScheduler {
     static func reschedule(routes: [Route], dayOverrideRaw: String, now: Date = Date()) async {
         let center = UNUserNotificationCenter.current()
         let pending = await center.pendingNotificationRequests()
-        center.removePendingNotificationRequests(withIdentifiers: pending.map(\.identifier).filter { $0.hasPrefix(prefix) })
+        center.removePendingNotificationRequests(withIdentifiers: pending.map(\.identifier).filter { $0.hasPrefix(prefix) || $0.hasPrefix(livePrefix) })
 
         let active = routes.filter(\.notifyEnabled)
-        guard !active.isEmpty else { return }
+        let liveRoutes = routes.filter(\.liveAutoStart)
+        guard !active.isEmpty || !liveRoutes.isEmpty else { return }
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
 
@@ -37,6 +39,20 @@ enum NotificationScheduler {
         for offset in 0..<7 {
             guard let dayStart = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
             let day = offset == 0 ? DayOverride.effective(raw: dayOverrideRaw, on: now) : DayType.automatic(for: dayStart)
+
+            // 잠금화면 실시간 현황 시작 알림: 누르면 앱이 열리면서 자동으로 시작된다.
+            for route in liveRoutes where route.liveAutoDays.contains(day) && route.times(for: day).contains(where: { $0 >= route.liveAutoFrom }) {
+                guard let fireDate = calendar.date(byAdding: .minute, value: route.liveAutoFrom, to: dayStart), fireDate > now else { continue }
+                let content = UNMutableNotificationContent()
+                content.title = "🔒 \(route.name) \(route.direction.title) 시간표"
+                content.body = "탭하면 다음 열차 카운트다운을 잠금화면에 띄워요."
+                if let seat = route.seatText(on: dayStart) { content.body += " \(seat)" }
+                content.sound = nil
+                let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+                let id = "\(livePrefix)\(route.id.uuidString)-\(Int(fireDate.timeIntervalSince1970))"
+                requests.append(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+            }
 
             for route in active where route.notifyDays.contains(day) {
                 for departure in route.times(for: day) where departure >= route.notifyFrom && departure <= route.notifyTo {

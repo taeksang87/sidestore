@@ -80,6 +80,14 @@ struct CommuteWidgetView: View {
     let entry: CommuteEntry
 
     var body: some View {
+        content
+            .widgetURL(entry.route.flatMap { route in
+                URL(string: route.tapOpensKorail ? "commutetimer://korail" : "commutetimer://route/\(route.id.uuidString)")
+            })
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch family {
         case .accessoryInline:
             inline.widgetBackground(.clear)
@@ -207,6 +215,12 @@ struct CommuteWidgetView: View {
                     .foregroundColor(.white.opacity(0.6))
             }
             .foregroundColor(.white)
+
+            if let seat = entry.route?.seatText(on: entry.date) {
+                Text(seat)
+                    .font(.caption.bold())
+                    .foregroundColor(.yellow)
+            }
 
             if let first {
                 HStack(alignment: .center) {

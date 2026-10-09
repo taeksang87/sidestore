@@ -3,6 +3,8 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(RailAPI.keyStorage) private var apiKey = ""
+    @AppStorage(KorailLauncher.schemeStorage) private var korailScheme = ""
+    @State private var korailResult: String?
     @State private var testing = false
     @State private var testResult: String?
     @State private var testFailed = false
@@ -46,6 +48,30 @@ struct SettingsView: View {
                     Link("공공데이터포털 열기", destination: URL(string: "https://www.data.go.kr")!)
                 }
                 .font(.subheadline)
+
+                Section {
+                    TextField("URL 스킴 (비워 두면 자동)", text: $korailScheme)
+                        .font(.footnote.monospaced())
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    Button("코레일톡 열기 테스트") {
+                        Task {
+                            let method = await KorailLauncher.open()
+                            korailResult = method == "App Store"
+                                ? "앱을 바로 열지 못해서 App Store 페이지를 열었어요. 거기서 ‘열기’를 누르면 돼요."
+                                : "‘\(method)’로 열었어요."
+                        }
+                    }
+                    if let korailResult {
+                        Text(korailResult)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } header: {
+                    Text("코레일톡")
+                } footer: {
+                    Text("잠금화면 실시간 현황을 누르면 코레일톡을 열어요. 공식 URL 스킴이 공개돼 있지 않아 몇 가지 주소를 차례로 시도하고, 안 되면 App Store의 코레일톡 페이지를 열어요.")
+                }
 
                 Section("자동 업데이트") {
                     Text("‘철도 API 자동 연동’을 켠 노선은 앱을 열 때 직통열차(KTX·ITX)는 하루 한 번, 광역전철 시간표는 7일에 한 번 새로 받아와요. 노선 화면에서 바로 업데이트할 수도 있어요.")

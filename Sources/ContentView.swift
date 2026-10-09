@@ -107,6 +107,10 @@ struct ContentView: View {
             }
             .task {
                 SharedData.dayOverrideRaw = dayOverrideRaw
+                // 잠금화면 자동 표시용 ‘탭하면 시작’ 알림을 보내려면 알림 권한이 필요하다.
+                if store.routes.contains(where: { $0.liveAutoStart || $0.notifyEnabled }) {
+                    _ = await NotificationScheduler.requestAuthorization()
+                }
                 await RailSync.autoSync(store: store, key: apiKey)
                 await refreshAlerts()
                 // 앱이 열려 있는 동안 1분마다 잠금화면 실시간 현황 갱신
@@ -121,6 +125,12 @@ struct ContentView: View {
                         await RailSync.autoSync(store: store, key: apiKey)
                         await refreshAlerts()
                     }
+                }
+            }
+            .onOpenURL { url in
+                // 잠금화면 실시간 현황을 누르면 commutetimer://korail 로 들어와서 코레일톡으로 넘긴다.
+                if url.host == "korail" {
+                    Task { await KorailLauncher.open() }
                 }
             }
             .onChange(of: store.routes) { _ in
@@ -144,6 +154,7 @@ struct ContentView: View {
     }
 
     private func updateLiveActivities() async {
+        await LiveActivityManager.autoStartIfNeeded(routes: store.routes, day: day) { bus.summary(for: $0) }
         await LiveActivityManager.updateAll(routes: store.routes, day: day) { bus.summary(for: $0) }
     }
 
@@ -217,6 +228,12 @@ struct RouteCard: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+            }
+
+            if let seat = route.seatText(on: now) {
+                Text("\(seat) · 오늘 좌석")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.orange)
             }
 
             if let first {

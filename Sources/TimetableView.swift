@@ -180,6 +180,27 @@ struct TimetableView: View {
                     .foregroundColor(.red)
             }
 
+            Toggle("자동으로 잠금화면 표시", isOn: Binding(
+                get: { current.liveAutoStart },
+                set: { on in
+                    binding.wrappedValue.liveAutoStart = on
+                    // 시작 시각에 ‘탭하면 시작’ 알림을 보내려면 알림 권한이 필요하다.
+                    if on { Task { _ = await NotificationScheduler.requestAuthorization() } }
+                }
+            ))
+            if current.liveAutoStart {
+                DatePicker("이 시각부터", selection: minutesBinding(binding.liveAutoFrom), displayedComponents: .hourAndMinute)
+                dayChips(binding.liveAutoDays)
+            }
+            Toggle("잠금화면 누르면 코레일톡 열기", isOn: binding.tapOpensKorail)
+            if current.tapOpensKorail {
+                Button {
+                    Task { await KorailLauncher.open() }
+                } label: {
+                    Label("지금 코레일톡 열기", systemImage: "ticket")
+                }
+            }
+
             Toggle("출발 알림", isOn: Binding(
                 get: { current.notifyEnabled },
                 set: { on in
@@ -239,7 +260,31 @@ struct TimetableView: View {
         } header: {
             Text("알림·잠금화면")
         } footer: {
-            Text("잠금화면 표시는 앱을 열 때마다 최신으로 바뀌고, 앱이 꺼져 있어도 다음 열차 4편의 카운트다운은 계속 흘러가요. 출발 알림은 앱을 열 때마다 앞으로 7일 치를 다시 예약해요.")
+            Text("자동 표시: 정한 시각에 ‘탭하면 시작’ 알림이 오고, 그 시각 이후 앱을 열면 바로 잠금화면에 떠요 (무료 Apple ID는 앱 없이 스스로 시작할 수 없어요). 직접 끈 날은 다시 켜지지 않아요.\n잠금화면 표시는 앱을 열 때마다 최신으로 바뀌고, 앱이 꺼져 있어도 다음 열차 4편의 카운트다운은 계속 흘러가요. 출발 알림은 앱을 열 때마다 앞으로 7일 치를 다시 예약해요.")
+        }
+    }
+
+    private func dayChips(_ days: Binding<[DayType]>) -> some View {
+        HStack(spacing: 8) {
+            ForEach(DayType.allCases) { d in
+                let on = days.wrappedValue.contains(d)
+                Button {
+                    if on {
+                        days.wrappedValue.removeAll { $0 == d }
+                    } else {
+                        days.wrappedValue.append(d)
+                    }
+                } label: {
+                    Text(d.shortTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(on ? Color.accentColor : Color.secondary.opacity(0.15), in: Capsule())
+                        .foregroundColor(on ? .white : .primary)
+                }
+                .buttonStyle(.borderless)
+            }
+            Spacer()
         }
     }
 

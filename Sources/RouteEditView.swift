@@ -12,6 +12,7 @@ struct RouteEditView: View {
     @State private var latitudeText: String
     @State private var longitudeText: String
     @State private var transferFareText: String
+    @State private var seatTrainText: String
 
     @State private var genStart = RouteEditView.today(hour: 6, minute: 0)
     @State private var genEnd = RouteEditView.today(hour: 9, minute: 0)
@@ -28,6 +29,7 @@ struct RouteEditView: View {
         _latitudeText = State(initialValue: route.latitude.map { String($0) } ?? "")
         _longitudeText = State(initialValue: route.longitude.map { String($0) } ?? "")
         _transferFareText = State(initialValue: route.transferFare > 0 ? String(route.transferFare) : "")
+        _seatTrainText = State(initialValue: route.seatTrain.map { TimeText.clock($0) } ?? "")
     }
 
     private var isNew: Bool { !store.contains(draft) }
@@ -55,6 +57,24 @@ struct RouteEditView: View {
                     Text("노선")
                 } footer: {
                     Text("‘역까지 이동’은 출발해서 플랫폼에 서기까지 걸리는 시간이에요. 넣으면 언제 나가야 하는지 알려줘요. ‘탑승 시간’을 넣으면 도착 예상 시각을 보여줘요.")
+                }
+
+                Section {
+                    TextField("좌석 예약한 열차 시각 (예: 06:11, 선택)", text: $seatTrainText)
+                        .keyboardType(.numbersAndPunctuation)
+                    ForEach(0..<Route.weekdayNames.count, id: \.self) { index in
+                        let day = Route.weekdayNames[index]
+                        HStack {
+                            Text(day.title)
+                                .font(.headline)
+                                .frame(width: 28, alignment: .leading)
+                            TextField("예: 3호차 12A", text: seatBinding(day.key))
+                        }
+                    }
+                } header: {
+                    Text("요일별 좌석 (월~금)")
+                } footer: {
+                    Text("오늘 좌석이 홈 카드와 잠금화면에 표시돼요. 비워 둔 요일은 표시하지 않아요.")
                 }
 
                 Section {
@@ -207,8 +227,19 @@ struct RouteEditView: View {
         )
     }
 
+    private func seatBinding(_ key: String) -> Binding<String> {
+        Binding(
+            get: { draft.seats[key] ?? "" },
+            set: { draft.seats[key] = $0 }
+        )
+    }
+
     private func save() {
         var route = draft
+        route.seatTrain = TimeText.parse(seatTrainText).times.first
+        route.seats = route.seats
+            .mapValues { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.value.isEmpty }
         route.name = route.name.trimmingCharacters(in: .whitespaces)
         route.stop = route.stop.trimmingCharacters(in: .whitespaces)
         route.destination = route.destination.trimmingCharacters(in: .whitespaces)

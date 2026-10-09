@@ -16,6 +16,8 @@ struct CommuteActivityAttributes: ActivityAttributes {
         var trains: [Train]
         var expressText: String?
         var busText: String?
+        /// 오늘 좌석 ("🎫 06:11 3호차 12A")
+        var seatText: String?
         var updatedAt: Date
     }
 
@@ -24,6 +26,13 @@ struct CommuteActivityAttributes: ActivityAttributes {
     var stop: String
     var destination: String
     var walkMinutes: Int
+    /// 누르면 코레일톡 열기
+    var opensKorail: Bool
+
+    /// 잠금화면·다이나믹 아일랜드를 눌렀을 때 열 주소 (앱이 받아서 코레일톡으로 넘긴다)
+    var tapURL: URL? {
+        URL(string: opensKorail ? "commutetimer://korail" : "commutetimer://route/\(routeID)")
+    }
 }
 
 extension Route {

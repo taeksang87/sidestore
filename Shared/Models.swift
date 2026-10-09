@@ -185,6 +185,18 @@ struct Route: Identifiable, Codable, Equatable {
     var notifyTo: Int = 20 * 60
     var notifyDays: [DayType] = [.weekday]
 
+    /// 잠금화면 실시간 현황 자동 시작 (liveAutoFrom 이후 앱을 열거나 알림을 누르면 시작)
+    var liveAutoStart: Bool = false
+    var liveAutoFrom: Int = 15 * 60
+    var liveAutoDays: [DayType] = [.weekday]
+    /// 잠금화면 실시간 현황을 누르면 코레일톡 열기
+    var tapOpensKorail: Bool = false
+
+    /// 요일별 좌석 ("2"=월 … "6"=금, Calendar.weekday 기준) → "3호차 12A"
+    var seats: [String: String] = [:]
+    /// 좌석을 예약해 둔 열차 출발 시각(분). nil이면 시각 표시 없이 좌석만
+    var seatTrain: Int?
+
     /// 철도 API(TAGO)로 시간표를 자동으로 받아올지
     var autoSync: Bool = false
     /// 지하철정보 API 방향 코드: U(상행) / D(하행)
@@ -229,6 +241,7 @@ extension Route {
         case autoSync, syncDirection, transferStation, arrivals, timetableSyncedAt, expressSyncedDay
         case busStopId, busStopLabel
         case notifyEnabled, notifyLead, notifyFrom, notifyTo, notifyDays
+        case liveAutoStart, liveAutoFrom, liveAutoDays, tapOpensKorail, seats, seatTrain
     }
 
     /// 새 버전에서 항목이 추가돼도 예전에 저장한 데이터를 읽을 수 있도록, 없는 값은 기본값으로 채운다.
@@ -266,6 +279,12 @@ extension Route {
         notifyFrom = try c.decodeIfPresent(Int.self, forKey: .notifyFrom) ?? 17 * 60
         notifyTo = try c.decodeIfPresent(Int.self, forKey: .notifyTo) ?? 20 * 60
         notifyDays = try c.decodeIfPresent([DayType].self, forKey: .notifyDays) ?? [.weekday]
+        liveAutoStart = try c.decodeIfPresent(Bool.self, forKey: .liveAutoStart) ?? false
+        liveAutoFrom = try c.decodeIfPresent(Int.self, forKey: .liveAutoFrom) ?? 15 * 60
+        liveAutoDays = try c.decodeIfPresent([DayType].self, forKey: .liveAutoDays) ?? [.weekday]
+        tapOpensKorail = try c.decodeIfPresent(Bool.self, forKey: .tapOpensKorail) ?? false
+        seats = try c.decodeIfPresent([String: String].self, forKey: .seats) ?? [:]
+        seatTrain = try c.decodeIfPresent(Int.self, forKey: .seatTrain)
     }
 }
 
@@ -313,6 +332,37 @@ extension Route {
     }
 
     var hasCoordinate: Bool { latitude != nil && longitude != nil }
+
+    static let weekdayNames: [(key: String, title: String)] = [("2", "월"), ("3", "화"), ("4", "수"), ("5", "목"), ("6", "금")]
+
+    /// 오늘 좌석 안내 한 줄 ("🎫 06:11 3호차 12A"). 오늘 좌석이 없으면 nil
+    func seatText(on date: Date) -> String? {
+        let weekday = Calendar.current.component(.weekday, from: date)
+        guard let seat = seats[String(weekday)]?.trimmingCharacters(in: .whitespaces), !seat.isEmpty else { return nil }
+        if let seatTrain { return "🎫 \(TimeText.clock(seatTrain)) \(seat)" }
+        return "🎫 \(seat)"
+    }
+
+    /// 출근 동해선 기본 노선 (센텀 → 태화강). 시간표는 철도 API로 받아온다.
+    static var commuteToWorkSample: Route {
+        var route = Route(
+            name: "동해선",
+            stop: "센텀",
+            destination: "태화강",
+            direction: .toWork,
+            transport: .train,
+            walkMinutes: 0,
+            rideMinutes: 58
+        )
+        route.setTimes([6 * 60 + 11], for: .weekday)
+        route.autoSync = true
+        route.syncDirection = "D"
+        route.latitude = 35.1690
+        route.longitude = 129.1316
+        route.seatTrain = 6 * 60 + 11
+        route.tapOpensKorail = true
+        return route
+    }
 
     /// API로 받은 실제 도착 시각, 없으면 탑승 시간으로 계산한 예상 시각
     func arrivalEstimate(for departure: Departure) -> (minutes: Int, exact: Bool)? {
@@ -388,6 +438,7 @@ extension Route {
         donghae.transferFare = 1600
         donghae.transferStation = "신해운대"
         donghae.autoSync = true
+        donghae.liveAutoStart = true
 
         donghae.latitude = 35.5384
         donghae.longitude = 129.3372
@@ -399,7 +450,7 @@ extension Route {
             "728", "732", "734", "741", "742", "743", "744", "752", "753",
             "763", "773"
         ]
-        return [donghae]
+        return [commuteToWorkSample, donghae]
     }
 }
 

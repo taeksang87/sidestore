@@ -33,6 +33,11 @@ targets:
         CFBundleVersion: "2"
         LSRequiresIPhoneOS: true
         NSSupportsLiveActivities: true
+        # 잠금화면 실시간 현황을 눌렀을 때 commutetimer://korail 로 앱이 열린다
+        CFBundleURLTypes:
+          - CFBundleURLName: app.commutetimer
+            CFBundleURLSchemes:
+              - commutetimer
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

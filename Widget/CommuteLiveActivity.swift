@@ -6,6 +6,7 @@ struct CommuteLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: CommuteActivityAttributes.self) { context in
             LiveActivityLockScreen(context: context)
+                .widgetURL(context.attributes.tapURL)
                 .activityBackgroundTint(Color(red: 0.06, green: 0.09, blue: 0.16).opacity(0.85))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
@@ -40,7 +41,10 @@ struct CommuteLiveActivity: Widget {
                             Text("\(context.attributes.destination) \(next.arrivalIsExact ? "" : "약 ")\(TimeText.clock(arrival)) 도착")
                         }
                         Spacer()
-                        if let bus = context.state.busText {
+                        if let seat = context.state.seatText {
+                            Text(seat)
+                                .foregroundColor(.yellow)
+                        } else if let bus = context.state.busText {
                             Text(bus)
                                 .foregroundColor(.green)
                         }
@@ -60,6 +64,7 @@ struct CommuteLiveActivity: Widget {
                 Image(systemName: "tram.fill")
                     .foregroundColor(.teal)
             }
+            .widgetURL(context.attributes.tapURL)
         }
     }
 }
@@ -84,6 +89,23 @@ struct LiveActivityLockScreen: View {
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.5))
                 }
+            }
+
+            if let seat = context.state.seatText {
+                HStack {
+                    Text(seat)
+                        .font(.subheadline.bold())
+                        .foregroundColor(.yellow)
+                    Spacer()
+                    if attributes.opensKorail {
+                        Text("눌러서 코레일톡 ›")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.yellow.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
             }
 
             if let first = trains.first {
