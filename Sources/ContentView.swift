@@ -153,8 +153,8 @@ struct ContentView: View {
 
     /// 출발 알림 재예약 + 잠금화면 실시간 현황 갱신
     private func refreshAlerts() async {
-        await NotificationScheduler.reschedule(routes: store.routes, dayOverrideRaw: dayOverrideRaw)
         await updateLiveActivities()
+        await NotificationScheduler.reschedule(routes: store.routes, dayOverrideRaw: dayOverrideRaw)
     }
 
     private func updateLiveActivities() async {

@@ -8,6 +8,10 @@ import Foundation
 enum LiveActivityManager {
     static var isSupported: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
 
+    static var runningRouteIDs: Set<String> {
+        Set(Activity<CommuteActivityAttributes>.activities.map(\.attributes.routeID))
+    }
+
     static func isRunning(for route: Route) -> Bool {
         Activity<CommuteActivityAttributes>.activities.contains { $0.attributes.routeID == route.id.uuidString }
     }
@@ -55,6 +59,7 @@ enum LiveActivityManager {
         }
         do {
             try await start(route: route, day: day, busText: nil, auto: !force)
+            await NotificationScheduler.reschedule(routes: routes, dayOverrideRaw: SharedData.dayOverrideRaw)
             return "\(route.name) \(route.direction.title) 실시간 현황을 띄웠어요."
         } catch {
             return "실시간 현황을 띄우지 못했어요: \(error.localizedDescription)"
@@ -67,6 +72,7 @@ enum LiveActivityManager {
             UserDefaults.standard.set(RailSync.todayKey(), forKey: stoppedKey(activity.attributes.routeID))
             await activity.end(nil, dismissalPolicy: .immediate)
         }
+        await NotificationScheduler.removeVoice()
     }
 
     static func start(route: Route, day: DayType, busText: String?, auto: Bool = false) async throws {

@@ -197,12 +197,23 @@ struct TimetableView: View {
                 DatePicker("이 시각까지", selection: minutesBinding(binding.liveAutoUntil), displayedComponents: .hourAndMinute)
                 dayChips(binding.liveAutoDays)
             }
-            Toggle("잠금화면 누르면 코레일톡 열기", isOn: binding.tapOpensKorail)
-            if current.tapOpensKorail {
-                Button {
-                    Task { await KorailLauncher.open() }
-                } label: {
-                    Label("지금 코레일톡 열기", systemImage: "ticket")
+            Group {
+                Toggle("잠금화면 누르면 코레일톡 열기", isOn: binding.tapOpensKorail)
+                if current.tapOpensKorail {
+                    Button {
+                        Task { await KorailLauncher.open() }
+                    } label: {
+                        Label("지금 코레일톡 열기", systemImage: "ticket")
+                    }
+                }
+            }
+            Group {
+                Toggle("에어팟 음성 안내", isOn: binding.voiceEnabled)
+                if current.voiceEnabled {
+                    Stepper("\(current.voiceInterval)분마다 ‘출발까지 N분’", value: binding.voiceInterval, in: 1...30)
+                    Text("잠금화면 실시간 현황이 켜져 있는 동안, 에어팟을 끼고 있으면 Siri가 읽어줘요. 아이폰 설정 > 알림 > 알림 읽어주기를 켜고 ‘출퇴근’을 허용해 주세요.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
 
@@ -307,6 +318,7 @@ struct TimetableView: View {
             if LiveActivityManager.isRunning(for: route) {
                 await LiveActivityManager.stop(route: route)
                 liveRunning = false
+                await NotificationScheduler.reschedule(routes: store.routes, dayOverrideRaw: dayOverrideRaw)
             } else {
                 do {
                     try await LiveActivityManager.start(
@@ -316,6 +328,8 @@ struct TimetableView: View {
                     )
                     liveRunning = true
                     liveError = nil
+                    if route.voiceEnabled { _ = await NotificationScheduler.requestAuthorization() }
+                    await NotificationScheduler.reschedule(routes: store.routes, dayOverrideRaw: dayOverrideRaw)
                 } catch {
                     liveError = "잠금화면 표시를 시작하지 못했어요: \(error.localizedDescription)"
                 }

@@ -23,6 +23,20 @@ final class RouteStore: ObservableObject {
         applyMugunghwaUpdate()
         applyVisibleUntilUpdate()
         applyCommuteLiveUpdate()
+        applyVoiceUpdate()
+    }
+
+    /// v8: 퇴근 동해선 에어팟 음성 안내 (5분마다)
+    private func applyVoiceUpdate() {
+        let defaults = UserDefaults.standard
+        let key = "oneTimeUpdate.v8"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        var updated = routes
+        for index in updated.indices where updated[index].name == "동해선" && updated[index].direction == .toHome {
+            updated[index].voiceEnabled = true
+        }
+        if updated != routes { routes = updated }
     }
 
     /// v7: 출근 동해선(센텀) 잠금화면 실시간 현황 평일 05:40~07:20

@@ -194,6 +194,9 @@ struct Route: Identifiable, Codable, Equatable {
     var liveAutoDays: [DayType] = [.weekday]
     /// 잠금화면 실시간 현황을 누르면 코레일톡 열기
     var tapOpensKorail: Bool = false
+    /// 실시간 현황이 켜져 있는 동안 voiceInterval분마다 ‘출발까지 N분’ 알림 (에어팟 + Siri 알림 읽어주기)
+    var voiceEnabled: Bool = false
+    var voiceInterval: Int = 5
 
     /// 요일별 좌석 ("2"=월 … "6"=금, Calendar.weekday 기준) → "3호차 12A"
     var seats: [String: String] = [:]
@@ -269,6 +272,7 @@ extension Route {
         case busStopId, busStopLabel
         case notifyEnabled, notifyLead, notifyFrom, notifyTo, notifyDays
         case liveAutoStart, liveAutoFrom, liveAutoUntil, liveAutoDays, tapOpensKorail, seats, seatTrain
+        case voiceEnabled, voiceInterval
         case timetableSource, trainLabels, visibleUntil
         case connectStopName, connectAddress, connectDestination, connectRoutes, connectTransferMinutes, connectStopId, connectStopLabel
     }
@@ -313,6 +317,8 @@ extension Route {
         liveAutoUntil = try c.decodeIfPresent(Int.self, forKey: .liveAutoUntil) ?? 21 * 60
         liveAutoDays = try c.decodeIfPresent([DayType].self, forKey: .liveAutoDays) ?? [.weekday]
         tapOpensKorail = try c.decodeIfPresent(Bool.self, forKey: .tapOpensKorail) ?? false
+        voiceEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceEnabled) ?? false
+        voiceInterval = try c.decodeIfPresent(Int.self, forKey: .voiceInterval) ?? 5
         seats = try c.decodeIfPresent([String: String].self, forKey: .seats) ?? [:]
         seatTrain = try c.decodeIfPresent(Int.self, forKey: .seatTrain)
         timetableSource = try c.decodeIfPresent(String.self, forKey: .timetableSource) ?? "subway"
@@ -523,6 +529,7 @@ extension Route {
         donghae.transferStation = "신해운대"
         donghae.autoSync = true
         donghae.liveAutoStart = true
+        donghae.voiceEnabled = true
 
         donghae.latitude = 35.5384
         donghae.longitude = 129.3372

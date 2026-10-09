@@ -6,6 +6,9 @@ import UserNotifications
 enum NotificationScheduler {
     private static let prefix = "leave-"
     private static let livePrefix = "live-"
+    private static let voicePrefix = "voice-"
+    /// 음성 안내는 한 번에 최대 2시간 치
+    private static let voiceHorizon: TimeInterval = 2 * 3600
     private static let maxPending = 60
 
     static func requestAuthorization() async -> Bool {
@@ -24,17 +27,28 @@ enum NotificationScheduler {
     static func reschedule(routes: [Route], dayOverrideRaw: String, now: Date = Date()) async {
         let center = UNUserNotificationCenter.current()
         let pending = await center.pendingNotificationRequests()
-        center.removePendingNotificationRequests(withIdentifiers: pending.map(\.identifier).filter { $0.hasPrefix(prefix) || $0.hasPrefix(livePrefix) })
+        center.removePendingNotificationRequests(withIdentifiers: pending.map(\.identifier).filter {
+            $0.hasPrefix(prefix) || $0.hasPrefix(livePrefix) || $0.hasPrefix(voicePrefix)
+        })
+        await removeDeliveredVoice()
 
+        let running = await MainActor.run { LiveActivityManager.runningRouteIDs }
+        let voiceRoutes = routes.filter { $0.voiceEnabled && running.contains($0.id.uuidString) }
         let active = routes.filter(\.notifyEnabled)
         let liveRoutes = routes.filter(\.liveAutoStart)
-        guard !active.isEmpty || !liveRoutes.isEmpty else { return }
+        guard !active.isEmpty || !liveRoutes.isEmpty || !voiceRoutes.isEmpty else { return }
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
 
         var requests: [UNNotificationRequest] = []
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
+
+        // 에어팟 음성 안내: 실시간 현황이 켜진 노선만, N분마다 ‘다음 열차 출발까지’
+        let todayType = DayOverride.effective(raw: dayOverrideRaw, on: now)
+        for route in voiceRoutes {
+            requests += voiceRequests(for: route, day: todayType, now: now, calendar: calendar)
+        }
 
         for offset in 0..<7 {
             guard let dayStart = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
@@ -84,6 +98,59 @@ enum NotificationScheduler {
         for request in requests.sorted(by: { fireDate($0) < fireDate($1) }).prefix(maxPending) {
             try? await center.add(request)
         }
+    }
+
+    private static func voiceRequests(for route: Route, day: DayType, now: Date, calendar: Calendar) -> [UNNotificationRequest] {
+        let interval = max(1, route.voiceInterval)
+        let today = calendar.startOfDay(for: now)
+        // 다음 N분 단위 시각부터 (예: 5분 간격이면 18:05, 18:10 …)
+        let nowMinutes = TimeText.minutesOfDay(now)
+        var minutes = (nowMinutes / interval + 1) * interval
+        let endMinutes = min(route.liveAutoStart ? route.liveAutoUntil : 24 * 60, nowMinutes + Int(voiceHorizon / 60))
+        var requests: [UNNotificationRequest] = []
+
+        while minutes < endMinutes {
+            defer { minutes += interval }
+            guard let fireDate = calendar.date(byAdding: .minute, value: minutes, to: today),
+                  let next = route.upcoming(from: fireDate, day: day, limit: 1).first,
+                  !next.isTomorrow else { continue }
+
+            let content = UNMutableNotificationContent()
+            content.title = "\(route.name) \(TimeText.clock(next.minutes)) 열차"
+            let toDeparture = max(0, next.secondsUntil / 60)
+            if route.walkMinutes > 0 && next.leaveIn > 0 {
+                content.body = "출발까지 \(toDeparture)분, \(TimeText.clock(next.minutes - route.walkMinutes))까지 나가세요."
+            } else if route.walkMinutes > 0 {
+                content.body = "출발까지 \(toDeparture)분, 서두르세요."
+            } else {
+                content.body = "출발까지 \(toDeparture)분."
+            }
+            content.sound = nil
+            content.threadIdentifier = "\(voicePrefix)\(route.id.uuidString)"
+            content.interruptionLevel = .active
+
+            let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            let id = "\(voicePrefix)\(route.id.uuidString)-\(Int(fireDate.timeIntervalSince1970))"
+            requests.append(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+        }
+        return requests
+    }
+
+    /// 음성 안내 예약·표시된 알림 모두 지우기 (실시간 현황을 끌 때)
+    static func removeVoice() async {
+        let center = UNUserNotificationCenter.current()
+        let pending = await center.pendingNotificationRequests()
+        center.removePendingNotificationRequests(withIdentifiers: pending.map(\.identifier).filter { $0.hasPrefix(voicePrefix) })
+        await removeDeliveredVoice()
+    }
+
+    /// 이미 지나간 음성 안내 알림은 알림 센터에서 지워 깔끔하게 둔다.
+    private static func removeDeliveredVoice() async {
+        let center = UNUserNotificationCenter.current()
+        let delivered = await center.deliveredNotifications()
+        let ids = delivered.map(\.request.identifier).filter { $0.hasPrefix(voicePrefix) }
+        if !ids.isEmpty { center.removeDeliveredNotifications(withIdentifiers: ids) }
     }
 
     static func pendingCount(for route: Route) async -> Int {
