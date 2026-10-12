@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import WidgetKit
 
 /// 잠금화면 실시간 현황(Live Activity) 시작·갱신·종료.
 /// 무료 Apple ID는 푸시를 못 쓰므로, 앱이 열려 있을 때 갱신한다.
@@ -54,13 +55,14 @@ enum LiveActivityManager {
         } else {
             route = routes.filter { qualifies($0, now: now, day: day) }.max { $0.liveAutoFrom < $1.liveAutoFrom }
         }
-        guard let route else {
+        guard let picked = route else {
             return day == .holiday ? "오늘은 휴일이라 띄우지 않았어요." : "지금은 실시간 현황을 띄울 시간이 아니에요."
         }
+        let (target, allRoutes) = await syncTodayIfNeeded(picked, routes: routes)
         do {
-            try await start(route: route, day: day, busText: nil, auto: !force)
-            await NotificationScheduler.reschedule(routes: routes, dayOverrideRaw: SharedData.dayOverrideRaw)
-            return "\(route.name) \(route.direction.title) 실시간 현황을 띄웠어요."
+            try await start(route: target, day: day, busText: nil, auto: !force)
+            await NotificationScheduler.reschedule(routes: allRoutes, dayOverrideRaw: SharedData.dayOverrideRaw)
+            return "\(target.name) \(target.direction.title) 실시간 현황을 띄웠어요."
         } catch {
             return "실시간 현황을 띄우지 못했어요: \(error.localizedDescription)"
         }
@@ -93,7 +95,7 @@ enum LiveActivityManager {
         let state = makeState(route: route, day: day, busText: busText)
         _ = try Activity.request(
             attributes: attributes,
-            content: ActivityContent(state: state, staleDate: state.trains.first?.departure),
+            content: ActivityContent(state: state, staleDate: staleDate(route: route, state: state)),
             pushType: nil
         )
     }
@@ -124,9 +126,34 @@ enum LiveActivityManager {
             if state.trains.isEmpty && state.onboard == nil {
                 await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .default)
             } else {
-                await activity.update(ActivityContent(state: state, staleDate: state.trains.first?.departure))
+                await activity.update(ActivityContent(state: state, staleDate: staleDate(route: route, state: state)))
             }
         }
+    }
+
+    /// 이 시각이 지나면 잠금화면에 ‘앱을 열면 최신으로’ 표시. 버스 연계 노선은 도착 시각까지는 그대로 유효하다.
+    private static func staleDate(route: Route, state: CommuteActivityAttributes.ContentState) -> Date? {
+        if route.hasBusConnection {
+            return state.onboard?.arrival ?? state.trains.first?.arrival ?? state.trains.first?.departure
+        }
+        return state.trains.first?.departure
+    }
+
+    /// 단축어로 켤 때: 코레일 시간표 노선은 오늘 시간표를 먼저 받아서 오늘 열차(예: 06:11) 기준으로 띄운다.
+    private static func syncTodayIfNeeded(_ route: Route, routes: [Route]) async -> (Route, [Route]) {
+        guard route.autoSync, route.isKorailSource,
+              !(route.timetableSyncedAt.map { Calendar.current.isDateInToday($0) } ?? false),
+              let key = UserDefaults.standard.string(forKey: RailAPI.keyStorage), !key.isEmpty,
+              let result = try? await RailSync.sync(route, key: key, timetable: true, express: false) else {
+            return (route, routes)
+        }
+        var updated = routes
+        if let index = updated.firstIndex(where: { $0.id == route.id }) {
+            updated[index] = result.route
+            try? SharedData.saveRoutes(updated)
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+        return (result.route, updated)
     }
 
     private static func makeState(route: Route, day: DayType, busText: String?) -> CommuteActivityAttributes.ContentState {

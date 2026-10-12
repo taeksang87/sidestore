@@ -73,6 +73,16 @@ struct CommuteLiveActivity: Widget {
 struct LiveActivityLockScreen: View {
     let context: ActivityViewContext<CommuteActivityAttributes>
 
+    /// "무궁화호 1886 · 태화강 07:02 도착"
+    private func trainLine(_ train: CommuteActivityAttributes.Train, destination: String) -> String {
+        var parts: [String] = []
+        if let label = train.label { parts.append(label) }
+        if let arrival = train.arrival {
+            parts.append("\(destination) \(train.arrivalIsExact ? "" : "약 ")\(TimeText.clock(arrival)) 도착")
+        }
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
         let attributes = context.attributes
         let trains = context.state.trains
@@ -114,6 +124,8 @@ struct LiveActivityLockScreen: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("🚆 \(onboard.label ?? "열차") 탑승 중")
                             .font(.headline)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                         Text("\(attributes.destination) \(onboard.arrivalIsExact ? "" : "약 ")\(TimeText.clock(arrival)) 도착")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.65))
@@ -132,20 +144,14 @@ struct LiveActivityLockScreen: View {
             } else if let first = trains.first {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(TimeText.clock(first.departure))
-                                .font(.system(size: 34, weight: .bold, design: .rounded))
-                            if let label = first.label {
-                                Text(label)
-                                    .font(.caption.bold())
-                                    .foregroundColor(.orange)
-                            }
-                        }
-                        if let arrival = first.arrival {
-                            Text("\(attributes.destination) \(first.arrivalIsExact ? "" : "약 ")\(TimeText.clock(arrival)) 도착")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.65))
-                        }
+                        Text(TimeText.clock(first.departure))
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                        // 열차 이름과 도착 시각을 한 줄로 (두 줄로 갈라지지 않게)
+                        Text(trainLine(first, destination: attributes.destination))
+                            .font(.caption.bold())
+                            .foregroundColor(.orange)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
@@ -159,7 +165,30 @@ struct LiveActivityLockScreen: View {
                     }
                 }
 
-                if trains.count > 1 {
+                // 나가기 → 출발 → 도착 진행 바: 앱이 꺼져 있어도 시간에 맞춰 저절로 채워진다.
+                if let arrival = first.arrival, arrival > first.leaveBy {
+                    VStack(spacing: 3) {
+                        ProgressView(timerInterval: first.leaveBy...arrival, countsDown: false) {
+                            EmptyView()
+                        } currentValueLabel: {
+                            EmptyView()
+                        }
+                        .tint(.teal)
+                        HStack {
+                            Text("나가기 \(TimeText.clock(first.leaveBy))")
+                            Spacer()
+                            Text("출발 \(TimeText.clock(first.departure))")
+                            Spacer()
+                            Text("도착까지 ")
+                            CountdownText(target: arrival)
+                                .frame(maxWidth: 70, alignment: .trailing)
+                        }
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+
+                if trains.count > 1 && first.arrival == nil {
                     HStack(spacing: 12) {
                         Text("이후")
                             .font(.caption2)

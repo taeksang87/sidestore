@@ -138,6 +138,13 @@ final class RouteStore: ObservableObject {
         return route
     }
 
+    /// 다른 곳(단축어·위젯)에서 저장한 최신 노선을 다시 읽는다.
+    func reloadFromDisk() {
+        if let shared = SharedData.loadRoutes(), shared != routes {
+            routes = shared
+        }
+    }
+
     func route(id: UUID) -> Route? {
         routes.first { $0.id == id }
     }

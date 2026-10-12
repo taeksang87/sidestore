@@ -126,6 +126,8 @@ struct ContentView: View {
             .onChange(of: scenePhase) { phase in
                 if phase == .active {
                     Task {
+                        // 단축어가 백그라운드에서 받은 시간표가 있으면 먼저 읽어 온다.
+                        store.reloadFromDisk()
                         await RailSync.autoSync(store: store, key: apiKey)
                         await refreshAlerts()
                     }
@@ -387,14 +389,19 @@ struct RouteCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(first.text)
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundColor(.teal)
-                    if let label = route.trainLabel(for: first.minutes, day: first.day) {
-                        Text(label)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.orange)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(first.text)
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundColor(.teal)
+                            .fixedSize()
+                        if let label = route.trainLabel(for: first.minutes, day: first.day) {
+                            Text(label)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.orange)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
                     }
                     if let arrival = route.arrivalEstimate(for: first) {
                         Text("\(route.destination.isEmpty ? "도착" : route.destination + " 도착") \(arrival.exact ? "" : "약 ")\(TimeText.clock(arrival.minutes))")
