@@ -25,6 +25,20 @@ final class RouteStore: ObservableObject {
         applyCommuteLiveUpdate()
         applyVoiceUpdate()
         applyActiveDaysUpdate()
+        applyPinnedTrainUpdate()
+    }
+
+    /// v10: 출근 동해선(센텀)은 무궁화호 1886만 (05:22 ITX-마음 등은 표시하지 않음)
+    private func applyPinnedTrainUpdate() {
+        let defaults = UserDefaults.standard
+        let key = "oneTimeUpdate.v10"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        var updated = routes
+        for index in updated.indices where updated[index].direction == .toWork && updated[index].stop == "센텀" {
+            updated[index].pinnedTrain = "1886"
+        }
+        if updated != routes { routes = updated }
     }
 
     /// v9: 출근 동해선(센텀)은 평일만 (주말·공휴일은 다음 평일 06:11 표시)

@@ -207,6 +207,8 @@ struct Route: Identifiable, Codable, Equatable {
     var visibleUntil: Int?
     /// 이 노선을 타는 요일 (예: 출근은 평일만). 다른 날은 건너뛰고 다음 타는 날 열차를 보여준다.
     var activeDays: [DayType] = DayType.allCases
+    /// 늘 타는 열차 번호 (예: "1886"). 정해 두면 이 열차만 보여준다.
+    var pinnedTrain: String = ""
 
     /// 시간표 출처: "subway"(광역전철, 지하철정보 API) / "korail"(무궁화·ITX·KTX, 열차정보 API)
     var timetableSource: String = "subway"
@@ -242,6 +244,14 @@ struct Route: Identifiable, Codable, Equatable {
     /// 다음 열차·알림에 쓰는 시간표 (visibleUntil 이후 열차 제외)
     func visibleTimes(for day: DayType) -> [Int] {
         guard activeDays.contains(day) else { return [] }
+        let pin = pinnedTrain.trimmingCharacters(in: .whitespaces)
+        if !pin.isEmpty {
+            // 늘 타는 열차만 (예: 무궁화호 1886). 열차 이름을 아직 못 받았으면 좌석 열차 시각으로 대신 찾는다.
+            let pinned = times(for: day).filter { trainLabel(for: $0, day: day)?.hasSuffix(" " + pin) == true }
+            if !pinned.isEmpty { return pinned }
+            if let seatTrain, times(for: day).contains(seatTrain) { return [seatTrain] }
+            return []
+        }
         guard let visibleUntil else { return times(for: day) }
         return times(for: day).filter { $0 < visibleUntil }
     }
@@ -276,7 +286,7 @@ extension Route {
         case notifyEnabled, notifyLead, notifyFrom, notifyTo, notifyDays
         case liveAutoStart, liveAutoFrom, liveAutoUntil, liveAutoDays, tapOpensKorail, seats, seatTrain
         case voiceEnabled, voiceInterval
-        case timetableSource, trainLabels, visibleUntil, activeDays
+        case timetableSource, trainLabels, visibleUntil, activeDays, pinnedTrain
         case connectStopName, connectAddress, connectDestination, connectRoutes, connectTransferMinutes, connectStopId, connectStopLabel
     }
 
@@ -328,6 +338,7 @@ extension Route {
         trainLabels = try c.decodeIfPresent([String: String].self, forKey: .trainLabels) ?? [:]
         visibleUntil = try c.decodeIfPresent(Int.self, forKey: .visibleUntil)
         activeDays = try c.decodeIfPresent([DayType].self, forKey: .activeDays) ?? DayType.allCases
+        pinnedTrain = try c.decodeIfPresent(String.self, forKey: .pinnedTrain) ?? ""
         connectStopName = try c.decodeIfPresent(String.self, forKey: .connectStopName) ?? ""
         connectAddress = try c.decodeIfPresent(String.self, forKey: .connectAddress) ?? ""
         connectDestination = try c.decodeIfPresent(String.self, forKey: .connectDestination) ?? ""
@@ -438,6 +449,7 @@ extension Route {
     mutating func applyMugunghwaCommute() {
         visibleUntil = 7 * 60
         activeDays = [.weekday]
+        pinnedTrain = "1886"
         timetableSource = "korail"
         trainLabels["weekday-\(6 * 60 + 11)"] = "무궁화호 1886"
         connectStopName = "태화강역"

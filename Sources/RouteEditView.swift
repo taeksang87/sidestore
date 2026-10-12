@@ -114,6 +114,8 @@ struct RouteEditView: View {
                         }
                         TextField("직통열차 환승역 (선택, 예: 신해운대)", text: $draft.transferStation)
                     }
+                    TextField("늘 타는 열차 번호 (선택, 예: 1886)", text: $draft.pinnedTrain)
+                        .keyboardType(.numberPad)
                     Toggle("늦은 열차 숨기기", isOn: Binding(
                         get: { draft.visibleUntil != nil },
                         set: { draft.visibleUntil = $0 ? 7 * 60 : nil }
