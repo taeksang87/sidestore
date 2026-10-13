@@ -188,21 +188,25 @@ struct LiveActivityLockScreen: View {
                     }
                 }
 
-                if trains.count > 1 && first.arrival == nil {
-                    HStack(spacing: 12) {
-                        Text("이후")
-                            .font(.caption2)
+                // 다음 열차: 놓쳐도 바로 보이게 (같은 날 열차만)
+                let nextTrains = trains.dropFirst().filter { Calendar.current.isDate($0.departure, inSameDayAs: first.departure) }
+                if let second = nextTrains.first {
+                    HStack(spacing: 6) {
+                        Text("다음")
                             .foregroundColor(.white.opacity(0.5))
-                        ForEach(trains.dropFirst(), id: \.self) { train in
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(TimeText.clock(train.departure))
-                                    .font(.caption.bold())
-                                CountdownText(target: train.leaveBy)
-                                    .font(.caption2)
-                                    .foregroundColor(.white.opacity(0.6))
-                            }
-                        }
+                        Text(TimeText.clock(second.departure))
+                            .bold()
+                        Text("나가기")
+                            .foregroundColor(.white.opacity(0.5))
+                        CountdownText(target: second.leaveBy)
+                            .frame(maxWidth: 52, alignment: .leading)
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer(minLength: 4)
+                        Text(nextTrains.dropFirst().map { TimeText.clock($0.departure) }.joined(separator: " · "))
+                            .foregroundColor(.white.opacity(0.7))
+                            .lineLimit(1)
                     }
+                    .font(.caption)
                 }
             } else {
                 Text("오늘 운행이 끝났어요")

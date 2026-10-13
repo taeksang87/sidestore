@@ -435,6 +435,18 @@ extension Route {
         return trimmed.isEmpty ? number : String(trimmed)
     }
 
+    /// 화면·위젯에 보여줄 노선: 오전엔 출근, 오후엔 퇴근.
+    /// 그 방향을 오늘 타지 않는 날(주말·공휴일)이면 오늘 열차가 남은 노선을 보여준다.
+    static func displayRoute(_ routes: [Route], at date: Date, day: DayType) -> Route? {
+        let direction = CommuteDirection.suggested(for: date)
+        if let route = routes.first(where: { $0.direction == direction && $0.activeDays.contains(day) && !$0.times(for: day).isEmpty }) {
+            return route
+        }
+        return routes.first { $0.hasTrainsLeftToday(at: date, day: day) }
+            ?? routes.first { $0.direction == direction }
+            ?? routes.first
+    }
+
     /// 오늘 아직 탈 열차가 남았는지
     func hasTrainsLeftToday(at date: Date, day: DayType) -> Bool {
         upcoming(from: date, day: day, limit: 1).contains { !$0.isTomorrow }

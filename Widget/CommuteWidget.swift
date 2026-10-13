@@ -7,6 +7,8 @@ struct CommuteEntry: TimelineEntry {
     let day: DayType
     let trains: [CommuteActivityAttributes.Train]
     let express: String?
+    /// 타고 가는 중인 열차 (출근 무궁화: 출발 ~ 도착)
+    var onboard: CommuteActivityAttributes.Train? = nil
 }
 
 struct CommuteProvider: TimelineProvider {
@@ -29,6 +31,14 @@ struct CommuteProvider: TimelineProvider {
             for train in route.activityTrains(from: now, day: day, limit: 12) {
                 dates.insert(train.leaveBy)
                 dates.insert(train.departure.addingTimeInterval(1))
+                if let arrival = train.arrival { dates.insert(arrival.addingTimeInterval(1)) }
+            }
+            if let arrival = route.onboardTrain(at: now, day: day)?.arrival {
+                dates.insert(arrival.addingTimeInterval(1))
+            }
+            // 오후 1시에 출근 → 퇴근으로 넘어가도록
+            if let noon = Calendar.current.date(bySettingHour: 13, minute: 0, second: 1, of: now) {
+                dates.insert(noon)
             }
         }
         let horizon = now.addingTimeInterval(6 * 3600)
@@ -45,13 +55,7 @@ struct CommuteProvider: TimelineProvider {
 
     /// 오전엔 출근, 오후엔 퇴근 노선. 해당 방향이 없으면 첫 노선
     private func pickRoute(_ routes: [Route], at date: Date) -> Route? {
-        let direction = CommuteDirection.suggested(for: date)
-        let day = DayOverride.effective(raw: SharedData.dayOverrideRaw, on: date)
-        let withTrains = routes.filter { $0.hasTrainsLeftToday(at: date, day: day) }
-        return withTrains.first { $0.direction == direction }
-            ?? withTrains.first
-            ?? routes.first { $0.direction == direction }
-            ?? routes.first
+        Route.displayRoute(routes, at: date, day: DayOverride.effective(raw: SharedData.dayOverrideRaw, on: date))
     }
 
     private func entry(at date: Date, routes: [Route]) -> CommuteEntry {
@@ -64,7 +68,8 @@ struct CommuteProvider: TimelineProvider {
             route: route,
             day: day,
             trains: route.activityTrains(from: date, day: day),
-            express: route.nextExpressText(from: date)
+            express: route.nextExpressText(from: date),
+            onboard: route.onboardTrain(at: date, day: day)
         )
     }
 }
@@ -111,6 +116,16 @@ struct CommuteWidgetView: View {
     private var name: String { entry.route?.name ?? "출퇴근" }
     private var walks: Bool { (entry.route?.walkMinutes ?? 0) > 0 }
 
+    /// 다음 열차들 ("18:38 · 18:54"), 같은 날 열차만
+    private var nextText: String? {
+        guard let first else { return nil }
+        let next = entry.trains.dropFirst()
+            .filter { Calendar.current.isDate($0.departure, inSameDayAs: first.departure) }
+            .prefix(2)
+            .map { TimeText.clock($0.departure) }
+        return next.isEmpty ? nil : next.joined(separator: " · ")
+    }
+
     private var sectionText: String {
         guard let route = entry.route, !route.destination.isEmpty else { return "" }
         return " · \(route.stop) → \(route.destination)"
@@ -149,7 +164,20 @@ struct CommuteWidgetView: View {
 
     private var rectangular: some View {
         VStack(alignment: .leading, spacing: 1) {
-            if let first {
+            if let onboard = entry.onboard, let arrival = onboard.arrival {
+                Text("🚆 \(onboard.label ?? name) 탑승 중")
+                    .font(.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                HStack(spacing: 3) {
+                    Text("도착까지")
+                    CountdownText(target: arrival)
+                }
+                .font(.caption.weight(.semibold))
+                Text("\(entry.route?.destination ?? "") \(TimeText.clock(arrival)) 도착")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else if let first {
                 Text("🚆 \(TimeText.clock(first.departure)) \(name)")
                     .font(.headline)
                     .lineLimit(1)
@@ -158,7 +186,12 @@ struct CommuteWidgetView: View {
                     CountdownText(target: first.leaveBy > entry.date ? first.leaveBy : first.departure)
                 }
                 .font(.caption.weight(.semibold))
-                if let arrival = arrivalText(first) {
+                if let nextText {
+                    Text("다음 \(nextText)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                } else if let arrival = arrivalText(first) {
                     Text(arrival)
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -185,7 +218,22 @@ struct CommuteWidgetView: View {
             .font(.caption.weight(.semibold))
             .foregroundColor(.white.opacity(0.8))
 
-            if let first {
+            if let onboard = entry.onboard, let arrival = onboard.arrival {
+                Text("탑승 중")
+                    .font(.caption.bold())
+                    .foregroundColor(.teal)
+                Text(onboard.label ?? TimeText.clock(onboard.departure))
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                CountdownText(target: arrival)
+                    .font(.title3.bold())
+                    .foregroundColor(.white)
+                Text("\(entry.route?.destination ?? "") \(TimeText.clock(arrival)) 도착")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.6))
+            } else if let first {
                 Text(TimeText.clock(first.departure))
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                     .foregroundColor(.teal)
@@ -196,6 +244,12 @@ struct CommuteWidgetView: View {
                     Text(arrival)
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.6))
+                }
+                if let nextText {
+                    Text("다음 \(nextText)")
+                        .font(.caption2.bold())
+                        .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(1)
                 }
             } else {
                 Spacer()
@@ -227,7 +281,34 @@ struct CommuteWidgetView: View {
                     .foregroundColor(.yellow)
             }
 
-            if let first {
+            if let onboard = entry.onboard, let arrival = onboard.arrival {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("🚆 \(onboard.label ?? "열차") 탑승 중")
+                            .font(.headline)
+                            .foregroundColor(.teal)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Text("\(entry.route?.destination ?? "") \(TimeText.clock(arrival)) 도착")
+                            .font(.caption2.bold())
+                            .foregroundColor(.orange)
+                    }
+                    .layoutPriority(1)
+                    Spacer(minLength: 4)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        CountdownText(target: arrival)
+                            .font(.title3.bold())
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.trailing)
+                        Text("도착까지")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    .frame(width: 92, alignment: .trailing)
+                }
+                .padding(8)
+                .background(Color.teal.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+            } else if let first {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(TimeText.clock(first.departure))

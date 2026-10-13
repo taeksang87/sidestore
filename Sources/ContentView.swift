@@ -71,13 +71,9 @@ struct ContentView: View {
             }
             .navigationTitle("\(direction.title) 시간표")
             .onAppear {
-                // 추천 방향에 오늘 남은 열차가 없으면, 열차가 남은 쪽을 먼저 보여준다.
-                let now = Date()
-                let withTrains = store.routes.filter { $0.hasTrainsLeftToday(at: now, day: day) }
-                if !withTrains.contains(where: { $0.direction == direction }), let other = withTrains.first?.direction {
-                    direction = other
-                } else if !store.routes.contains(where: { $0.direction == direction }), let other = store.routes.first?.direction {
-                    direction = other
+                // 오전엔 출근, 오후엔 퇴근 (그 방향을 안 타는 날이면 오늘 열차가 남은 쪽)
+                if let route = Route.displayRoute(store.routes, at: Date(), day: day) {
+                    direction = route.direction
                 }
             }
             .navigationDestination(for: UUID.self) { id in
