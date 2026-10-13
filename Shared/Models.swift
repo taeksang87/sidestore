@@ -247,7 +247,11 @@ struct Route: Identifiable, Codable, Equatable {
         let pin = pinnedTrain.trimmingCharacters(in: .whitespaces)
         if !pin.isEmpty {
             // 늘 타는 열차만 (예: 무궁화호 1886). 열차 이름을 아직 못 받았으면 좌석 열차 시각으로 대신 찾는다.
-            let pinned = times(for: day).filter { trainLabel(for: $0, day: day)?.hasSuffix(" " + pin) == true }
+            let pinNumber = Route.trimTrainNumber(pin)
+            let pinned = times(for: day).filter { time in
+                guard let number = trainLabel(for: time, day: day)?.split(separator: " ").last else { return false }
+                return Route.trimTrainNumber(String(number)) == pinNumber
+            }
             if !pinned.isEmpty { return pinned }
             if let seatTrain, times(for: day).contains(seatTrain) { return [seatTrain] }
             return []
@@ -418,7 +422,17 @@ extension Route {
     var isKorailSource: Bool { timetableSource == "korail" }
 
     func trainLabel(for departure: Int, day: DayType) -> String? {
-        trainLabels["\(day.rawValue)-\(departure)"]
+        guard let label = trainLabels["\(day.rawValue)-\(departure)"] else { return nil }
+        // 예전에 저장한 "무궁화호 01886" → "무궁화호 1886"
+        var parts = label.split(separator: " ").map(String.init)
+        if let last = parts.last { parts[parts.count - 1] = Route.trimTrainNumber(last) }
+        return parts.joined(separator: " ")
+    }
+
+    /// 열차 번호 앞의 0 제거 ("01886" → "1886")
+    static func trimTrainNumber(_ number: String) -> String {
+        let trimmed = number.drop { $0 == "0" }
+        return trimmed.isEmpty ? number : String(trimmed)
     }
 
     /// 오늘 아직 탈 열차가 남았는지
@@ -438,6 +452,7 @@ extension Route {
     /// v5 출근 설정: 무궁화호 1886 (센텀 06:11 → 태화강) + 태화강역에서 명촌공영차고지 버스 연계
     /// v7 출근 실시간 현황: 평일 05:40~07:20, 날씨는 자전거로 가는 태화강역 기준
     mutating func applyCommuteLiveSchedule() {
+        voiceEnabled = true
         liveAutoStart = true
         liveAutoFrom = 5 * 60 + 40
         liveAutoUntil = 7 * 60 + 20

@@ -400,7 +400,7 @@ enum RailSync {
             route.trainLabels = route.trainLabels.filter { !$0.key.hasPrefix(prefix) }
             for train in trains {
                 route.arrivals[prefix + String(train.departure)] = train.arrival
-                route.trainLabels[prefix + String(train.departure)] = "\(train.type) \(train.number)"
+                route.trainLabels[prefix + String(train.departure)] = "\(train.type) \(Route.trimTrainNumber(train.number))"
             }
             if date == today { todayTrains = trains }
         }

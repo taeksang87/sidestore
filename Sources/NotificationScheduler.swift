@@ -111,19 +111,26 @@ enum NotificationScheduler {
 
         while minutes < endMinutes {
             defer { minutes += interval }
-            guard let fireDate = calendar.date(byAdding: .minute, value: minutes, to: today),
-                  let next = route.upcoming(from: fireDate, day: day, limit: 1).first,
-                  !next.isTomorrow else { continue }
-
+            guard let fireDate = calendar.date(byAdding: .minute, value: minutes, to: today) else { continue }
             let content = UNMutableNotificationContent()
-            content.title = "\(route.name) \(TimeText.clock(next.minutes)) 열차"
-            let toDeparture = max(0, next.secondsUntil / 60)
-            if route.walkMinutes > 0 && next.leaveIn > 0 {
-                content.body = "출발까지 \(toDeparture)분, \(TimeText.clock(next.minutes - route.walkMinutes))까지 나가세요."
-            } else if route.walkMinutes > 0 {
-                content.body = "출발까지 \(toDeparture)분, 서두르세요."
+
+            if let onboard = route.onboardTrain(at: fireDate, day: day), let arrival = onboard.arrival {
+                // 열차를 탄 뒤: 도착까지 남은 시간
+                let toArrival = max(0, Int(arrival.timeIntervalSince(fireDate)) / 60)
+                content.title = "\(onboard.label ?? route.name) 탑승 중"
+                content.body = "\(route.destination) 도착까지 \(toArrival)분."
+            } else if let next = route.upcoming(from: fireDate, day: day, limit: 1).first, !next.isTomorrow {
+                content.title = "\(route.name) \(TimeText.clock(next.minutes)) 열차"
+                let toDeparture = max(0, next.secondsUntil / 60)
+                if route.walkMinutes > 0 && next.leaveIn > 0 {
+                    content.body = "출발까지 \(toDeparture)분, \(TimeText.clock(next.minutes - route.walkMinutes))까지 나가세요."
+                } else if route.walkMinutes > 0 {
+                    content.body = "출발까지 \(toDeparture)분, 서두르세요."
+                } else {
+                    content.body = "출발까지 \(toDeparture)분."
+                }
             } else {
-                content.body = "출발까지 \(toDeparture)분."
+                continue
             }
             content.sound = nil
             content.threadIdentifier = "\(voicePrefix)\(route.id.uuidString)"

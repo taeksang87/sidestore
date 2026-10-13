@@ -230,24 +230,18 @@ struct CommuteWidgetView: View {
             if let first {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 1) {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text(TimeText.clock(first.departure))
-                                .font(.system(size: 28, weight: .bold, design: .rounded))
-                                .foregroundColor(.teal)
-                            if let label = first.label {
-                                Text(label)
-                                    .font(.caption2.bold())
-                                    .foregroundColor(.orange)
-                                    .lineLimit(1)
-                            }
-                        }
-                        if let arrival = arrivalText(first) {
-                            Text(arrival)
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.6))
-                        }
+                        Text(TimeText.clock(first.departure))
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(.teal)
+                            .fixedSize()
+                        Text([first.label, arrivalText(first)].compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption2.bold())
+                            .foregroundColor(.orange)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
-                    Spacer()
+                    .layoutPriority(1)
+                    Spacer(minLength: 4)
                     VStack(alignment: .trailing, spacing: 1) {
                         leaveCountdown(first)
                             .font(.title3.bold())
@@ -256,7 +250,9 @@ struct CommuteWidgetView: View {
                         Text(walks ? "\(TimeText.clock(first.leaveBy))까지 출발" : "출발까지")
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.6))
+                            .lineLimit(1)
                     }
+                    .frame(width: 92, alignment: .trailing)
                 }
                 .padding(8)
                 .background(Color.teal.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))

@@ -26,6 +26,20 @@ final class RouteStore: ObservableObject {
         applyVoiceUpdate()
         applyActiveDaysUpdate()
         applyPinnedTrainUpdate()
+        applyCommuteVoiceUpdate()
+    }
+
+    /// v11: 출근 동해선(센텀)도 에어팟 음성 안내
+    private func applyCommuteVoiceUpdate() {
+        let defaults = UserDefaults.standard
+        let key = "oneTimeUpdate.v11"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        var updated = routes
+        for index in updated.indices where updated[index].direction == .toWork && updated[index].stop == "센텀" {
+            updated[index].voiceEnabled = true
+        }
+        if updated != routes { routes = updated }
     }
 
     /// v10: 출근 동해선(센텀)은 무궁화호 1886만 (05:22 ITX-마음 등은 표시하지 않음)
