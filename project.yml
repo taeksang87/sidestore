@@ -33,6 +33,10 @@ targets:
         CFBundleVersion: "2"
         LSRequiresIPhoneOS: true
         NSSupportsLiveActivities: true
+        # 이어폰 음성 안내: 실시간 현황이 켜진 동안 백그라운드에서 말하기
+        UIBackgroundModes:
+          - audio
+        NSMotionUsageDescription: 열차에 타서 움직이기 시작하면 이어폰 음성 안내와 퇴근 실시간 현황을 자동으로 끄는 데 사용해요.
         # 잠금화면 실시간 현황을 눌렀을 때 commutetimer://korail 로 앱이 열린다
         CFBundleURLTypes:
           - CFBundleURLName: app.commutetimer

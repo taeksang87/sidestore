@@ -33,10 +33,10 @@ enum NotificationScheduler {
         await removeDeliveredVoice()
 
         let running = await MainActor.run { LiveActivityManager.runningRouteIDs }
-        let voiceRoutes = routes.filter { $0.voiceEnabled && running.contains($0.id.uuidString) }
+        _ = running
         let active = routes.filter(\.notifyEnabled)
         let liveRoutes = routes.filter(\.liveAutoStart)
-        guard !active.isEmpty || !liveRoutes.isEmpty || !voiceRoutes.isEmpty else { return }
+        guard !active.isEmpty || !liveRoutes.isEmpty else { return }
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
 
@@ -46,9 +46,8 @@ enum NotificationScheduler {
 
         // 에어팟 음성 안내: 실시간 현황이 켜진 노선만, N분마다 ‘다음 열차 출발까지’
         let todayType = DayOverride.effective(raw: dayOverrideRaw, on: now)
-        for route in voiceRoutes {
-            requests += voiceRequests(for: route, day: todayType, now: now, calendar: calendar)
-        }
+        // 이어폰 음성 안내는 알림이 아니라 앱이 직접 말한다 (VoiceGuide)
+        _ = todayType
 
         for offset in 0..<7 {
             guard let dayStart = calendar.date(byAdding: .day, value: offset, to: today) else { continue }

@@ -27,6 +27,18 @@ final class RouteStore: ObservableObject {
         applyActiveDaysUpdate()
         applyPinnedTrainUpdate()
         applyCommuteVoiceUpdate()
+        applyNoKorailUpdate()
+    }
+
+    /// v12: 잠금화면 탭 시 코레일톡 실행 기능 삭제
+    private func applyNoKorailUpdate() {
+        let defaults = UserDefaults.standard
+        let key = "oneTimeUpdate.v12"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        var updated = routes
+        for index in updated.indices { updated[index].tapOpensKorail = false }
+        if updated != routes { routes = updated }
     }
 
     /// v11: 출근 동해선(센텀)도 에어팟 음성 안내

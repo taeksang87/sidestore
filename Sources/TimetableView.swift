@@ -198,20 +198,10 @@ struct TimetableView: View {
                 dayChips(binding.liveAutoDays)
             }
             Group {
-                Toggle("잠금화면 누르면 코레일톡 열기", isOn: binding.tapOpensKorail)
-                if current.tapOpensKorail {
-                    Button {
-                        Task { await KorailLauncher.open() }
-                    } label: {
-                        Label("지금 코레일톡 열기", systemImage: "ticket")
-                    }
-                }
-            }
-            Group {
-                Toggle("에어팟 음성 안내", isOn: binding.voiceEnabled)
+                Toggle("이어폰 음성 안내", isOn: binding.voiceEnabled)
                 if current.voiceEnabled {
                     Stepper("\(current.voiceInterval)분마다 ‘출발까지 N분’", value: binding.voiceInterval, in: 1...30)
-                    Text("잠금화면 실시간 현황이 켜져 있는 동안, 에어팟을 끼고 있으면 Siri가 읽어줘요. 아이폰 설정 > 알림 > 알림 읽어주기를 켜고 ‘출퇴근’을 허용해 주세요.")
+                    Text("잠금화면 실시간 현황이 켜져 있는 동안, 이어폰이 연결돼 있으면 앱이 직접 말해줘요. 열차를 타고 움직이기 시작하면 자동으로 멈추고, 퇴근은 잠금화면 현황도 꺼져요. 백그라운드에서 무음 오디오를 써서 배터리를 조금 더 써요.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -318,6 +308,7 @@ struct TimetableView: View {
             if LiveActivityManager.isRunning(for: route) {
                 await LiveActivityManager.stop(route: route)
                 liveRunning = false
+                VoiceGuide.shared.sync()
                 await NotificationScheduler.reschedule(routes: store.routes, dayOverrideRaw: dayOverrideRaw)
             } else {
                 do {
@@ -328,6 +319,7 @@ struct TimetableView: View {
                     )
                     liveRunning = true
                     liveError = nil
+                    VoiceGuide.shared.sync()
                     if route.voiceEnabled { _ = await NotificationScheduler.requestAuthorization() }
                     await NotificationScheduler.reschedule(routes: store.routes, dayOverrideRaw: dayOverrideRaw)
                 } catch {

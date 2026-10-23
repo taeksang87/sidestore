@@ -3,8 +3,6 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(RailAPI.keyStorage) private var apiKey = ""
-    @AppStorage(KorailLauncher.schemeStorage) private var korailScheme = ""
-    @State private var korailResult: String?
     @State private var testing = false
     @State private var testResult: String?
     @State private var testFailed = false
@@ -50,37 +48,13 @@ struct SettingsView: View {
                 .font(.subheadline)
 
                 Section {
-                    TextField("URL 스킴 (비워 두면 자동)", text: $korailScheme)
-                        .font(.footnote.monospaced())
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    Button("코레일톡 열기 테스트") {
-                        Task {
-                            let method = await KorailLauncher.open()
-                            korailResult = method == "App Store"
-                                ? "앱을 바로 열지 못해서 App Store 페이지를 열었어요. 거기서 ‘열기’를 누르면 돼요."
-                                : "‘\(method)’로 열었어요."
-                        }
-                    }
-                    if let korailResult {
-                        Text(korailResult)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                } header: {
-                    Text("코레일톡")
-                } footer: {
-                    Text("잠금화면 실시간 현황을 누르면 코레일톡을 열어요. 공식 URL 스킴이 공개돼 있지 않아 몇 가지 주소를 차례로 시도하고, 안 되면 App Store의 코레일톡 페이지를 열어요.")
-                }
-
-                Section {
                     Text("평일 15시에 자동으로 켜기")
                         .font(.subheadline.bold())
                     Text("단축어 앱 → 자동화 → + → ‘특정 시간’ → 15:00, 반복: 매주 월~금 → ‘즉시 실행’ 선택 → 동작에 ‘출퇴근 실시간 현황 켜기’ 추가\n공휴일이나 노선에서 정한 시간대가 아니면 알아서 띄우지 않아요.")
                         .font(.caption)
-                    Text("교통카드 찍으면 끄기")
+                    Text("열차 타면 자동으로 끄기")
                         .font(.subheadline.bold())
-                    Text("단축어 앱 → 자동화 → + → ‘거래(Transaction)’ → 교통카드로 쓰는 카드 선택 → ‘즉시 실행’ → 동작에 ‘출퇴근 실시간 현황 끄기’ 추가\n익스프레스 교통카드 태그에서 거래 자동화가 늦거나 안 뜨는 경우가 있어요. 그럴 땐 ‘도착’(위치) 자동화로 센텀역·태화강역 도착 시 끄기를 쓰면 확실해요.")
+                    Text("열차 출발 무렵 아이폰이 ‘차량 이동’을 감지하면 이어폰 안내를 멈추고, 퇴근은 잠금화면 현황도 꺼요. (‘동작 및 피트니스’ 권한 필요)\n직접 끄고 싶으면 단축어 ‘도착’(위치) 자동화로 역 도착 시 ‘출퇴근 실시간 현황 끄기’를 실행해도 돼요.")
                         .font(.caption)
                 } header: {
                     Text("단축어 자동화")

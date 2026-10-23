@@ -62,6 +62,7 @@ enum LiveActivityManager {
         do {
             try await start(route: target, day: day, busText: nil, auto: !force)
             await NotificationScheduler.reschedule(routes: allRoutes, dayOverrideRaw: SharedData.dayOverrideRaw)
+            VoiceGuide.shared.sync()
             return "\(target.name) \(target.direction.title) 실시간 현황을 띄웠어요."
         } catch {
             return "실시간 현황을 띄우지 못했어요: \(error.localizedDescription)"
@@ -75,6 +76,7 @@ enum LiveActivityManager {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
         await NotificationScheduler.removeVoice()
+        VoiceGuide.shared.stop()
     }
 
     static func start(route: Route, day: DayType, busText: String?, auto: Bool = false) async throws {

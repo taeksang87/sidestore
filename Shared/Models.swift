@@ -513,7 +513,6 @@ extension Route {
         route.latitude = 35.1690
         route.longitude = 129.1316
         route.seatTrain = 6 * 60 + 11
-        route.tapOpensKorail = true
         route.applyMugunghwaCommute()
         route.applyCommuteLiveSchedule()
         return route
