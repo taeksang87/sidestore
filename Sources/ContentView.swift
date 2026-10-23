@@ -11,11 +11,13 @@ struct ContentView: View {
     @State private var direction = CommuteDirection.suggested()
     @State private var editing: Route?
     @State private var showingSettings = false
+    /// 위젯을 눌러 들어오면 해당 노선 화면을 연다 (RootView가 넣어 줌)
+    @Binding var path: [UUID]
 
     private var day: DayType { DayOverride.effective(raw: dayOverrideRaw) }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
                     Picker("구분", selection: $direction) {
